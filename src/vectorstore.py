@@ -1,5 +1,5 @@
 """
-src.vectorstore
+emma.vectorstore
 ────────────────
 Builds and queries the FAISS vector index over the 18 medical textbooks.
 
@@ -208,6 +208,12 @@ def build_faiss_index(embeddings: np.ndarray) -> faiss.IndexFlatIP:
     Since embeddings are L2-normalised, inner product == cosine similarity.
     IndexFlatIP is exact (no approximation) — fine for ~200k chunks.
     """
+    if embeddings.ndim < 2 or embeddings.shape[0] == 0:
+        raise ValueError(
+            f"embeddings array is empty (shape={embeddings.shape}). "
+            "No textbook chunks were found — check that TEXTBOOK_DIR exists "
+            f"and contains .txt files:\n  {TEXTBOOK_DIR}"
+        )
     dim = embeddings.shape[1]
     index = faiss.IndexFlatIP(dim)
     index.add(embeddings)
