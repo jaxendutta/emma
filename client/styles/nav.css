@@ -1,0 +1,229 @@
+/* ── Navigation ────────────────────────────────────────────────────────────── */
+
+nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(250, 248, 245, 0.93);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 56px;
+}
+
+.nav-brand {
+    font-family: var(--serif);
+    font-size: 1.75rem;
+    font-style: italic;
+    font-weight: 500;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    flex-shrink: 0;
+}
+
+.nav-brand-sub {
+    font-size: 0.7rem;
+    color: var(--muted);
+    line-height: 1.15;
+    margin-left: 8px;
+    font-style: italic;
+    font-weight: 400;
+}
+
+.nav-tabs {
+    display: flex;
+    height: 100%;
+}
+
+.nav-tab {
+    display: flex;
+    align-items: center;
+    padding: 0 1.2rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+    user-select: none;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.nav-tab:hover {
+    color: var(--text);
+}
+
+.nav-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 500;
+}
+
+.nav-meta {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ── Hamburger button — hidden on desktop ─────────────────────────────────── */
+.nav-hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    width: 36px;
+    height: 36px;
+    padding: 8px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav-hamburger span {
+    display: block;
+    height: 1.5px;
+    background: var(--muted);
+    border-radius: 2px;
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.nav-hamburger.open span:nth-child(1) {
+    transform: translateY(6.5px) rotate(45deg);
+}
+
+.nav-hamburger.open span:nth-child(2) {
+    opacity: 0;
+}
+
+.nav-hamburger.open span:nth-child(3) {
+    transform: translateY(-6.5px) rotate(-45deg);
+}
+
+/* ── Overlay — invisible tap-to-close backdrop ────────────────────────────── */
+.nav-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 98;
+}
+
+.nav-overlay.open {
+    display: block;
+}
+
+/* ── Drawer ───────────────────────────────────────────────────────────────── */
+/* IMPORTANT: Must use solid hex colours — NOT CSS variables — because the
+   nav element has backdrop-filter which creates a new stacking context on
+   Safari. Any descendant with a non-opaque background (even one set via a
+   fully-opaque CSS variable) can render as transparent inside that context.
+   Hard-coded hex bypasses this completely.                                    */
+
+.nav-drawer {
+    display: none;
+    position: fixed;
+    top: 56px;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    /* above nav's stacking context */
+    background: #faf8f5;
+    /* solid hex — not var(--bg) */
+    border-bottom: 1px solid #e4ddd4;
+    box-shadow: 0 6px 24px rgba(42, 36, 32, 0.1);
+    flex-direction: column;
+    animation: drawerIn 0.16s ease both;
+}
+
+.nav-drawer.open {
+    display: flex;
+}
+
+@keyframes drawerIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.nav-drawer-tab {
+    display: flex;
+    align-items: center;
+    padding: 14px 24px;
+    font-family: 'Source Sans 3', system-ui, sans-serif;
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: #6d5b4f;
+    /* solid value — not var(--muted) */
+    cursor: pointer;
+    text-decoration: none;
+    border-left: 3px solid transparent;
+    background: #faf8f5;
+    /* solid hex — not var(--bg) */
+    transition: background 0.12s, color 0.12s;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.nav-drawer-tab.active {
+    border: 2px solid #bfe4d3;
+    border-radius: 28px;
+    font-weight: 500;
+    background: #edf7f1;
+    margin: 6px;
+    padding: 8px 18px;
+}
+
+.nav-drawer-tab.active:hover,
+.nav-drawer-tab.active:active {
+    background: #d8f3dc;
+}
+
+/* ── Mobile breakpoint ────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+    nav {
+        border-radius: 0 0 28px 28px;
+        padding-left: 1.5rem;
+        padding-right: 1rem;
+        transition: box-shadow 0.15s, border-bottom 0.15s, border-radius 0.15s;
+    }
+
+    nav.nav-drawer-open {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        border-bottom: none !important;
+    }
+
+    .nav-drawer {
+        border-radius: 0 0 28px 28px;
+        /* last tab should also feel rounded — overflow hidden clips it */
+        overflow: hidden;
+    }
+
+    .nav-tabs {
+        display: none;
+    }
+
+    .nav-meta {
+        display: none;
+    }
+
+    .nav-hamburger {
+        display: flex;
+    }
+}

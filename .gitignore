@@ -1,0 +1,23 @@
+# Environment
+.venv/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models (large files — don't commit the FAISS index)
+models/vectorstore/*.faiss
+models/vectorstore/*.pkl
+models/classifier/*.joblib
+
+# Data (don't commit raw datasets)
+data/
+
+# OS
+.DS_Store
+Thumbs.db
