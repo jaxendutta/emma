@@ -170,16 +170,49 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
     target = model_name or BIOMEDICAL_MODEL
     try:
         import torch
-        # Load in float16 to halve VRAM usage (no meaningful quality loss for embeddings)
-        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-        model = SentenceTransformer(
-            target,
-            model_kwargs={"torch_dtype": dtype},
-        )
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = model.to(device)
+        is_cuda = torch.cuda.is_available()
+
+        if is_cuda:
+            # Free any cached memory from previous runs before loading
+            torch.cuda.empty_cache()
+            free_gb = torch.cuda.mem_get_info()[0] / 1024**3
+            total_gb = torch.cuda.mem_get_info()[1] / 1024**3
+            print(f"[Vectorstore] GPU memory: {free_gb:.1f} GB free / {total_gb:.1f} GB total")
+            if free_gb < 2.0:
+                raise RuntimeError(
+                    f"Only {free_gb:.1f} GB free on GPU. "
+                    "Restart the Colab runtime to clear memory from previous runs, "
+                    "then re-run the setup and build cells."
+                )
+
+        # Load in float16 on GPU, float32 on CPU
+        # Use device_map="cuda" so weights are streamed directly onto GPU in fp16
+        # rather than loaded in fp32 on CPU then moved (which doubles peak memory)
+        if is_cuda:
+            model = SentenceTransformer(
+                target,
+                model_kwargs={
+                    "torch_dtype": torch.float16,
+                    "device_map": "cuda",
+                },
+                tokenizer_kwargs={"padding_side": "left"},
+            )
+        else:
+            model = SentenceTransformer(target)
+
+        device = "cuda" if is_cuda else "cpu"
+        dtype = next(model.parameters()).dtype
         print(f"[Vectorstore] Embedding model: {target}  (dtype={dtype}, device={device})")
         return model
+    except RuntimeError as e:
+        # Re-raise memory errors with a clear message — don't silently fall back
+        if "out of memory" in str(e).lower() or "free" in str(e).lower():
+            raise
+        print(f"[Vectorstore] Could not load {target}: {e}")
+        print(f"[Vectorstore] Falling back to {FALLBACK_MODEL}")
+        import torch
+        torch.cuda.empty_cache()
+        return SentenceTransformer(FALLBACK_MODEL)
     except Exception as e:
         print(f"[Vectorstore] Could not load {target}: {e}")
         print(f"[Vectorstore] Falling back to {FALLBACK_MODEL}")
