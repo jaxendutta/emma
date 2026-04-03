@@ -169,8 +169,16 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
     """
     target = model_name or BIOMEDICAL_MODEL
     try:
-        model = SentenceTransformer(target)
-        print(f"[Vectorstore] Embedding model: {target}")
+        import torch
+        # Load in float16 to halve VRAM usage (no meaningful quality loss for embeddings)
+        dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        model = SentenceTransformer(
+            target,
+            model_kwargs={"torch_dtype": dtype},
+        )
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model = model.to(device)
+        print(f"[Vectorstore] Embedding model: {target}  (dtype={dtype}, device={device})")
         return model
     except Exception as e:
         print(f"[Vectorstore] Could not load {target}: {e}")
@@ -181,7 +189,7 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
 def embed_texts(
     texts: list[str],
     model: SentenceTransformer,
-    batch_size: int = 64,
+    batch_size: int = 8,
     show_progress: bool = True,
 ) -> np.ndarray:
     """
@@ -353,7 +361,7 @@ def build_index(
     model_name: str | None = None,
     chunk_size: int = CHUNK_SIZE,
     overlap: int = CHUNK_OVERLAP,
-    batch_size: int = 64,
+    batch_size: int = 8,
 ) -> None:
     """
     Full pipeline: chunk → embed → index → save.
@@ -361,6 +369,10 @@ def build_index(
     This is the function to call from notebook 01_vectorstore_build.ipynb.
     Depending on hardware, this takes 10–45 minutes.
     """
+    import os
+    # Reduce CUDA memory fragmentation (helps on T4 with 15GB VRAM)
+    os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
+
     print("=" * 60)
     print(" EMMA vectorstore build")
     print("=" * 60)
