@@ -230,16 +230,33 @@ def embed_texts(
     """
     Embed a list of text strings into a float32 numpy array.
 
+    Encodes in explicit mini-batches with a tqdm bar so progress is
+    visible immediately rather than after a long upfront tokenisation pause.
+
     Shape: (len(texts), embedding_dim)
     """
-    embeddings = model.encode(
-        texts,
-        batch_size=batch_size,
-        show_progress_bar=show_progress,
-        convert_to_numpy=True,
-        normalize_embeddings=True,  # cosine similarity via dot product
-    )
-    return embeddings.astype(np.float32)
+    from tqdm import tqdm
+    import math
+
+    all_embeddings = []
+    n_batches = math.ceil(len(texts) / batch_size)
+
+    pbar = tqdm(total=len(texts), desc="Embedding chunks", unit="chunk", disable=not show_progress)
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i : i + batch_size]
+        emb = model.encode(
+            batch,
+            batch_size=batch_size,
+            show_progress_bar=False,   # suppress inner bar — we have our own
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+        )
+        all_embeddings.append(emb.astype(np.float32))
+        pbar.update(len(batch))
+
+    pbar.close()
+    return np.vstack(all_embeddings)
 
 
 # ── FAISS index ───────────────────────────────────────────────────────────────
