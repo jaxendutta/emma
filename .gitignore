@@ -16,7 +16,8 @@ models/vectorstore/*.pkl
 models/classifier/*.joblib
 
 # Data (don't commit raw datasets)
-data/
+# data/ Need uploading!
+# Add output dirs as needed
 
 # OS
 .DS_Store
