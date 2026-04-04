@@ -178,12 +178,14 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
             free_gb = torch.cuda.mem_get_info()[0] / 1024**3
             total_gb = torch.cuda.mem_get_info()[1] / 1024**3
             print(f"[Vectorstore] GPU memory: {free_gb:.1f} GB free / {total_gb:.1f} GB total")
-            if free_gb < 2.0:
+            if free_gb < 1.5:
                 raise RuntimeError(
                     f"Only {free_gb:.1f} GB free on GPU. "
-                    "Restart the Colab runtime to clear memory from previous runs, "
-                    "then re-run the setup and build cells."
+                    "Run the GPU cleanup cell above, or do Runtime → Restart session "
+                    "and re-run the setup cells before building."
                 )
+            elif free_gb < 4.0:
+                print(f"[Vectorstore] ⚠️  Only {free_gb:.1f} GB free — proceeding but watch for OOM")
 
         # Load in float16 on GPU, float32 on CPU
         # Use device_map="cuda" so weights are streamed directly onto GPU in fp16
@@ -222,7 +224,7 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
 def embed_texts(
     texts: list[str],
     model: SentenceTransformer,
-    batch_size: int = 32,
+    batch_size: int = 16,
     show_progress: bool = True,
 ) -> np.ndarray:
     """
@@ -394,7 +396,7 @@ def build_index(
     model_name: str | None = None,
     chunk_size: int = CHUNK_SIZE,
     overlap: int = CHUNK_OVERLAP,
-    batch_size: int = 32,
+    batch_size: int = 16,
 ) -> None:
     """
     Full pipeline: chunk → embed → index → save.
