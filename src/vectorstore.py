@@ -451,7 +451,7 @@ def save_index_with_texts(
     Like save_index(), but also saves the chunk text strings to
     models/vectorstore/texts.pkl so they don't need to be re-generated.
     """
-    save_index_with_texts(index, metadata, out_dir=out_dir, model_name=model_name)
+    save_index(index, metadata, out_dir=out_dir, model_name=model_name)
     out = Path(out_dir) if out_dir else VECTORSTORE_DIR
     with open(out / "texts.pkl", "wb") as f:
         pickle.dump(texts, f)
