@@ -222,7 +222,7 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
 def embed_texts(
     texts: list[str],
     model: SentenceTransformer,
-    batch_size: int = 8,
+    batch_size: int = 32,
     show_progress: bool = True,
 ) -> np.ndarray:
     """
@@ -394,7 +394,7 @@ def build_index(
     model_name: str | None = None,
     chunk_size: int = CHUNK_SIZE,
     overlap: int = CHUNK_OVERLAP,
-    batch_size: int = 8,
+    batch_size: int = 32,
 ) -> None:
     """
     Full pipeline: chunk → embed → index → save.
