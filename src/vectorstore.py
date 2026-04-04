@@ -4,40 +4,42 @@ emma.vectorstore
 Builds and queries the FAISS vector index over the 18 medical textbooks.
 
 Two main responsibilities:
-  1. BUILD  – chunk all textbooks, embed with a biomedical sentence-transformer,
-               persist the FAISS index + metadata to disk.
+  1. BUILD  – chunk all textbooks, embed with Qwen3-Embedding-0.6B,
+               persist the FAISS index + metadata + texts to disk.
   2. QUERY  – load the index and retrieve the top-k most relevant chunks
                for any natural-language query.
 
 Typical usage
 ─────────────
-Build once (takes ~10–30 min depending on hardware):
+Build once (run from notebook 01_vectorstore_build.ipynb):
 
-    from vectorstore import build_index
+    from src.vectorstore import build_index
     build_index()          # writes to models/vectorstore/
 
 Query at inference time:
 
-    from vectorstore import load_index, search
-    index, meta = load_index()
-    results = search("What is the mechanism of septic shock?", index, meta, k=5)
+    from src.vectorstore import load_index_with_texts, load_embedding_model, search
+    index, metadata, texts = load_index_with_texts()
+    model = load_embedding_model()
+    results = search("What is the mechanism of septic shock?", index, metadata, texts, model, k=5)
     for r in results:
-        print(r["score"], r["book"], r["text"][:200])
+        print(r["score"], r["friendly_name"], r["text"][:200])
 """
 
 from __future__ import annotations
 
 import json
+import os
 import pickle
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import faiss
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 
-# ── Repo root detection (same approach as data.py) ────────────────────────────
+# ── Repo root detection ───────────────────────────────────────────────────────
 
 def _find_repo_root() -> Path:
     here = Path(__file__).resolve().parent
@@ -50,27 +52,30 @@ REPO_ROOT = _find_repo_root()
 
 # ── Default paths ─────────────────────────────────────────────────────────────
 
-TEXTBOOK_DIR  = REPO_ROOT / "data" / "MedQA-USMLE" / "textbooks" / "en"
+TEXTBOOK_DIR    = REPO_ROOT / "data" / "MedQA-USMLE" / "textbooks" / "en"
 VECTORSTORE_DIR = REPO_ROOT / "models" / "vectorstore"
 
 # ── Embedding model ───────────────────────────────────────────────────────────
-# PubMedBERT fine-tuned for semantic similarity — domain-appropriate for
-# medical text. Falls back to MiniLM if the biomedical model is unavailable.
+# Qwen3-Embedding-0.6B: #1 open-source embedding model on MTEB (June 2025).
+# Apache 2.0, 32K token context, 1024-dim embeddings.
+# Loaded in float16 on GPU to halve VRAM usage with no meaningful quality loss.
 
-BIOMEDICAL_MODEL = "Qwen/Qwen3-Embedding-0.6B"
-FALLBACK_MODEL   = "all-MiniLM-L6-v2"
+BIOMEDICAL_MODEL  = "Qwen/Qwen3-Embedding-0.6B"
+FALLBACK_MODEL    = "all-MiniLM-L6-v2"
 
-# Instruction prefix for queries (improves retrieval by 1-5%)
-# Documents are embedded WITHOUT a prefix; only queries use this
-QUERY_INSTRUCTION = "Instruct: Given a medical question, retrieve relevant textbook passages that answer it\nQuery: "
+# Instruction prefix for queries only — documents are embedded WITHOUT prefix.
+# Prepending this to queries gives a free 1-5% retrieval boost (Qwen3 recommendation).
+QUERY_INSTRUCTION = (
+    "Instruct: Given a medical question, retrieve relevant textbook passages "
+    "that answer it\nQuery: "
+)
 
 # ── Chunking parameters ───────────────────────────────────────────────────────
 
 CHUNK_SIZE    = 400   # words per chunk
 CHUNK_OVERLAP = 50    # words of overlap between consecutive chunks
 
-
-# ── Friendly book names (mirrors data.py) ────────────────────────────────────
+# ── Friendly book names ───────────────────────────────────────────────────────
 
 TEXTBOOK_NAMES = {
     "Anatomy_Gray":            "Gray's Anatomy",
@@ -104,11 +109,11 @@ def chunk_text(
     """
     Split text into overlapping word-level chunks.
 
-    Returns a list of chunk strings. Each chunk is approximately
-    `chunk_size` words, with `overlap` words shared with the next chunk.
+    Each chunk is ~chunk_size words, with `overlap` words shared
+    with the next chunk to preserve context across boundaries.
     """
     words = text.split()
-    chunks = []
+    chunks: list[str] = []
     start = 0
     while start < len(words):
         end = start + chunk_size
@@ -117,7 +122,7 @@ def chunk_text(
             chunks.append(chunk)
         if end >= len(words):
             break
-        start = end - overlap  # slide window with overlap
+        start = end - overlap
     return chunks
 
 
@@ -131,17 +136,21 @@ def chunk_all_textbooks(
 
     Returns
     -------
-    texts : list[str]
-        All chunk strings in order.
-    metadata : list[dict]
-        Parallel list with one dict per chunk:
-        { "book": stem, "friendly_name": str, "chunk_idx": int }
+    texts    : list[str]       — all chunk strings in order
+    metadata : list[dict]      — parallel list, one dict per chunk:
+                                 {book, friendly_name, chunk_idx}
     """
     base = Path(textbook_dir) if textbook_dir else TEXTBOOK_DIR
     texts: list[str] = []
     metadata: list[dict] = []
 
-    for path in tqdm(sorted(base.glob("*.txt")), desc="Chunking textbooks"):
+    txt_files = sorted(base.glob("*.txt"))
+    for path in tqdm(
+        txt_files,
+        desc="Chunking textbooks",
+        unit="book",
+        bar_format="{l_bar}{bar}| {n:,}/{total:,} [{elapsed}<{remaining}, {rate_fmt}]",
+    ):
         stem = path.stem
         friendly = TEXTBOOK_NAMES.get(stem, stem)
         raw = path.read_text(encoding="utf-8", errors="replace")
@@ -152,10 +161,10 @@ def chunk_all_textbooks(
                 "book":          stem,
                 "friendly_name": friendly,
                 "chunk_idx":     idx,
-                "char_start":    None,   # approximate — not tracked at word level
             })
 
-    print(f"\n[Vectorstore] Total chunks: {len(texts):,} across {len(set(m['book'] for m in metadata))} books")
+    print(f"\n[Vectorstore] Total chunks: {len(texts):,} across "
+          f"{len(set(m['book'] for m in metadata))} books")
     return texts, metadata
 
 
@@ -163,9 +172,13 @@ def chunk_all_textbooks(
 
 def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
     """
-    Load the sentence-transformer embedding model.
+    Load Qwen3-Embedding-0.6B (or fallback to MiniLM).
 
-    Tries the biomedical model first; falls back to MiniLM if unavailable.
+    On CUDA: loads in float16 with device_map='cuda' so weights stream
+    directly onto GPU in fp16 — avoids the 2× peak VRAM of loading in
+    fp32 then moving. Checks free VRAM before attempting to load.
+
+    On CPU: loads in float32, no special handling needed.
     """
     target = model_name or BIOMEDICAL_MODEL
     try:
@@ -173,23 +186,19 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
         is_cuda = torch.cuda.is_available()
 
         if is_cuda:
-            # Free any cached memory from previous runs before loading
             torch.cuda.empty_cache()
-            free_gb = torch.cuda.mem_get_info()[0] / 1024**3
+            free_gb  = torch.cuda.mem_get_info()[0] / 1024**3
             total_gb = torch.cuda.mem_get_info()[1] / 1024**3
             print(f"[Vectorstore] GPU memory: {free_gb:.1f} GB free / {total_gb:.1f} GB total")
             if free_gb < 1.5:
                 raise RuntimeError(
                     f"Only {free_gb:.1f} GB free on GPU. "
-                    "Run the GPU cleanup cell above, or do Runtime → Restart session "
-                    "and re-run the setup cells before building."
+                    "Run the GPU cleanup cell, or do Runtime → Restart session "
+                    "and re-run setup cells before building."
                 )
             elif free_gb < 4.0:
-                print(f"[Vectorstore] ⚠️  Only {free_gb:.1f} GB free — proceeding but watch for OOM")
+                print(f"[Vectorstore] ⚠️  Only {free_gb:.1f} GB free — watch for OOM")
 
-        # Load in float16 on GPU, float32 on CPU
-        # Use device_map="cuda" so weights are streamed directly onto GPU in fp16
-        # rather than loaded in fp32 on CPU then moved (which doubles peak memory)
         if is_cuda:
             model = SentenceTransformer(
                 target,
@@ -203,17 +212,15 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
             model = SentenceTransformer(target)
 
         device = "cuda" if is_cuda else "cpu"
-        dtype = next(model.parameters()).dtype
+        dtype  = next(model.parameters()).dtype
         print(f"[Vectorstore] Embedding model: {target}  (dtype={dtype}, device={device})")
         return model
+
     except RuntimeError as e:
-        # Re-raise memory errors with a clear message — don't silently fall back
-        if "out of memory" in str(e).lower() or "free" in str(e).lower():
-            raise
+        if "out of memory" in str(e).lower() or "Only" in str(e):
+            raise   # re-raise OOM errors with the clear message
         print(f"[Vectorstore] Could not load {target}: {e}")
         print(f"[Vectorstore] Falling back to {FALLBACK_MODEL}")
-        import torch
-        torch.cuda.empty_cache()
         return SentenceTransformer(FALLBACK_MODEL)
     except Exception as e:
         print(f"[Vectorstore] Could not load {target}: {e}")
@@ -224,31 +231,33 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
 def embed_texts(
     texts: list[str],
     model: SentenceTransformer,
-    batch_size: int = 16,
+    batch_size: int = 32,
     show_progress: bool = True,
 ) -> np.ndarray:
     """
-    Embed a list of text strings into a float32 numpy array.
+    Embed a list of text strings → float32 numpy array of shape (N, dim).
 
-    Encodes in explicit mini-batches with a tqdm bar so progress is
-    visible immediately rather than after a long upfront tokenisation pause.
-
-    Shape: (len(texts), embedding_dim)
+    Encodes in explicit batches with our own tqdm bar so we control
+    formatting (comma-separated counts, 'chunk/s' unit).
+    sentence-transformers' internal bar is suppressed.
     """
-    from tqdm import tqdm
     import math
 
     all_embeddings = []
-    n_batches = math.ceil(len(texts) / batch_size)
-
-    pbar = tqdm(total=len(texts), desc="Embedding chunks", unit="chunk", disable=not show_progress)
+    pbar = tqdm(
+        total=len(texts),
+        desc="Embedding chunks",
+        unit="chunk",
+        bar_format="{l_bar}{bar}| {n:,}/{total:,} [{elapsed}<{remaining}, {rate_fmt}]",
+        disable=not show_progress,
+    )
 
     for i in range(0, len(texts), batch_size):
         batch = texts[i : i + batch_size]
         emb = model.encode(
             batch,
             batch_size=batch_size,
-            show_progress_bar=False,   # suppress inner bar — we have our own
+            show_progress_bar=False,     # suppress internal bar — we own it
             convert_to_numpy=True,
             normalize_embeddings=True,
         )
@@ -263,15 +272,15 @@ def embed_texts(
 
 def build_faiss_index(embeddings: np.ndarray) -> faiss.IndexFlatIP:
     """
-    Build a FAISS inner-product (cosine) index from normalised embeddings.
+    Build a FAISS IndexFlatIP (exact cosine) from L2-normalised embeddings.
 
-    Since embeddings are L2-normalised, inner product == cosine similarity.
-    IndexFlatIP is exact (no approximation) — fine for ~200k chunks.
+    IndexFlatIP is exact search — no approximation.
+    Fine for ~40k chunks; would need IVF or HNSW at >1M.
     """
     if embeddings.ndim < 2 or embeddings.shape[0] == 0:
         raise ValueError(
             f"embeddings array is empty (shape={embeddings.shape}). "
-            "No textbook chunks were found — check that TEXTBOOK_DIR exists "
+            "No textbook chunks found — check TEXTBOOK_DIR exists "
             f"and contains .txt files:\n  {TEXTBOOK_DIR}"
         )
     dim = embeddings.shape[1]
@@ -290,12 +299,9 @@ def save_index(
     model_name: str = BIOMEDICAL_MODEL,
 ) -> None:
     """
-    Persist the FAISS index and metadata to disk.
+    Persist the FAISS index, metadata, and config to disk.
 
-    Writes:
-        models/vectorstore/index.faiss
-        models/vectorstore/metadata.pkl
-        models/vectorstore/config.json
+    Writes: index.faiss, metadata.pkl, config.json
     """
     out = Path(out_dir) if out_dir else VECTORSTORE_DIR
     out.mkdir(parents=True, exist_ok=True)
@@ -306,11 +312,12 @@ def save_index(
         pickle.dump(metadata, f)
 
     config = {
-        "model_name":  model_name,
-        "chunk_size":  CHUNK_SIZE,
+        "model_name":    model_name,
+        "chunk_size":    CHUNK_SIZE,
         "chunk_overlap": CHUNK_OVERLAP,
-        "num_chunks":  len(metadata),
-        "num_books":   len(set(m["book"] for m in metadata)),
+        "num_chunks":    len(metadata),
+        "num_books":     len(set(m["book"] for m in metadata)),
+        "embedding_dim": index.d,
     }
     with open(out / "config.json", "w") as f:
         json.dump(config, f, indent=2)
@@ -321,144 +328,6 @@ def save_index(
     print(f"  config.json  {config}")
 
 
-def load_index(
-    index_dir: Path | str | None = None,
-) -> tuple[faiss.IndexFlatIP, list[dict]]:
-    """
-    Load the FAISS index and metadata from disk.
-
-    Returns
-    -------
-    index    : faiss.IndexFlatIP
-    metadata : list[dict]  — parallel to the index vectors
-    """
-    src = Path(index_dir) if index_dir else VECTORSTORE_DIR
-    index_path = src / "index.faiss"
-    meta_path  = src / "metadata.pkl"
-
-    if not index_path.exists():
-        raise FileNotFoundError(
-            f"FAISS index not found at {index_path}.\n"
-            "Run build_index() first to generate it."
-        )
-
-    index = faiss.read_index(str(index_path))
-
-    with open(meta_path, "rb") as f:
-        metadata = pickle.load(f)
-
-    print(f"[Vectorstore] Loaded index: {index.ntotal:,} vectors from {src}")
-    return index, metadata
-
-
-# ── Search ────────────────────────────────────────────────────────────────────
-
-def search(
-    query: str,
-    index: faiss.IndexFlatIP,
-    metadata: list[dict],
-    texts: list[str],
-    model: SentenceTransformer,
-    k: int = 5,
-) -> list[dict]:
-    """
-    Retrieve the top-k most relevant textbook chunks for a query.
-
-    Parameters
-    ----------
-    query    : natural-language question
-    index    : loaded FAISS index
-    metadata : parallel metadata list
-    texts    : parallel list of chunk strings
-    model    : the same embedding model used to build the index
-    k        : number of results to return
-
-    Returns
-    -------
-    List of dicts, each with keys:
-        rank, score, book, friendly_name, chunk_idx, text
-    """
-    # Prepend instruction prefix to queries (Qwen3-Embedding recommendation)
-    # Documents are embedded without prefix; only queries use this instruction
-    prefixed_query = QUERY_INSTRUCTION + query
-    query_vec = model.encode(
-        [prefixed_query],
-        convert_to_numpy=True,
-        normalize_embeddings=True,
-    ).astype(np.float32)
-
-    scores, indices = index.search(query_vec, k)
-
-    results = []
-    for rank, (score, idx) in enumerate(zip(scores[0], indices[0])):
-        if idx < 0:
-            continue  # FAISS returns -1 for empty slots
-        meta = metadata[idx]
-        results.append({
-            "rank":          rank + 1,
-            "score":         float(score),
-            "book":          meta["book"],
-            "friendly_name": meta["friendly_name"],
-            "chunk_idx":     meta["chunk_idx"],
-            "text":          texts[idx],
-        })
-    return results
-
-
-# ── Top-level build function ──────────────────────────────────────────────────
-
-def build_index(
-    textbook_dir: Path | str | None = None,
-    out_dir: Path | str | None = None,
-    model_name: str | None = None,
-    chunk_size: int = CHUNK_SIZE,
-    overlap: int = CHUNK_OVERLAP,
-    batch_size: int = 16,
-) -> None:
-    """
-    Full pipeline: chunk → embed → index → save.
-
-    This is the function to call from notebook 01_vectorstore_build.ipynb.
-    Depending on hardware, this takes 10–45 minutes.
-    """
-    import os
-    # Reduce CUDA memory fragmentation (helps on T4 with 15GB VRAM)
-    os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
-
-    print("=" * 60)
-    print(" EMMA vectorstore build")
-    print("=" * 60)
-
-    # 1. Chunk
-    texts, metadata = chunk_all_textbooks(
-        textbook_dir=textbook_dir,
-        chunk_size=chunk_size,
-        overlap=overlap,
-    )
-
-    # 2. Embed
-    model = load_embedding_model(model_name)
-    print(f"\n[Vectorstore] Embedding {len(texts):,} chunks (batch_size={batch_size})…")
-    embeddings = embed_texts(texts, model, batch_size=batch_size)
-
-    # 3. Index
-    index = build_faiss_index(embeddings)
-
-    # 4. Save
-    save_index_with_texts(
-        index=index,
-        metadata=metadata,
-        out_dir=out_dir,
-        model_name=model_name or BIOMEDICAL_MODEL,
-        texts=texts,
-    )
-
-    print("\n[Vectorstore] Build complete.")
-
-
-# ── Extended save/load that also persists the raw chunk texts ─────────────────
-# Using these avoids re-chunking on every load.
-
 def save_index_with_texts(
     index: faiss.IndexFlatIP,
     metadata: list[dict],
@@ -467,14 +336,38 @@ def save_index_with_texts(
     model_name: str = BIOMEDICAL_MODEL,
 ) -> None:
     """
-    Like save_index(), but also saves the chunk text strings to
-    models/vectorstore/texts.pkl so they don't need to be re-generated.
+    Like save_index(), but also saves chunk texts to texts.pkl
+    so they don't need to be re-generated on every load.
     """
     save_index(index, metadata, out_dir=out_dir, model_name=model_name)
     out = Path(out_dir) if out_dir else VECTORSTORE_DIR
     with open(out / "texts.pkl", "wb") as f:
         pickle.dump(texts, f)
     print(f"  texts.pkl    ({len(texts):,} chunks)")
+
+
+def load_index(
+    index_dir: Path | str | None = None,
+) -> tuple[faiss.IndexFlatIP, list[dict]]:
+    """
+    Load the FAISS index and metadata from disk.
+    """
+    src = Path(index_dir) if index_dir else VECTORSTORE_DIR
+    index_path = src / "index.faiss"
+    meta_path  = src / "metadata.pkl"
+
+    if not index_path.exists():
+        raise FileNotFoundError(
+            f"FAISS index not found at {index_path}.\n"
+            "Run notebook 01_vectorstore_build.ipynb to generate it."
+        )
+
+    index = faiss.read_index(str(index_path))
+    with open(meta_path, "rb") as f:
+        metadata = pickle.load(f)
+
+    print(f"[Vectorstore] Loaded index: {index.ntotal:,} vectors from {src}")
+    return index, metadata
 
 
 def load_index_with_texts(
@@ -496,7 +389,7 @@ def load_index_with_texts(
     if not texts_path.exists():
         raise FileNotFoundError(
             f"texts.pkl not found at {texts_path}.\n"
-            "Re-run build_index() (it now saves texts automatically)."
+            "Re-run notebook 01 to regenerate."
         )
 
     with open(texts_path, "rb") as f:
@@ -504,3 +397,144 @@ def load_index_with_texts(
 
     print(f"[Vectorstore] Loaded {len(texts):,} chunk texts from {src}")
     return index, metadata, texts
+
+
+# ── Search ────────────────────────────────────────────────────────────────────
+
+# Score bands for retrieval confidence
+SCORE_HIGH   = 0.70   # strong match — use freely
+SCORE_MEDIUM = 0.55   # acceptable — flag to LLM as uncertain
+SCORE_LOW    = 0.40   # weak — include with warning or skip
+
+
+def score_band(score: float) -> str:
+    """Categorise a cosine similarity score into a confidence band."""
+    if score >= SCORE_HIGH:
+        return "high"
+    elif score >= SCORE_MEDIUM:
+        return "medium"
+    elif score >= SCORE_LOW:
+        return "low"
+    else:
+        return "very_low"
+
+
+def search(
+    query: str,
+    index: faiss.IndexFlatIP,
+    metadata: list[dict],
+    texts: list[str],
+    model: SentenceTransformer,
+    k: int = 5,
+    min_score: float = SCORE_LOW,
+) -> list[dict]:
+    """
+    Retrieve the top-k most relevant textbook chunks for a query.
+
+    The query is prefixed with QUERY_INSTRUCTION before embedding
+    (Qwen3-Embedding recommendation for 1-5% retrieval gain).
+    Documents were embedded WITHOUT any prefix.
+
+    Parameters
+    ----------
+    query     : natural-language question or clinical vignette
+    index     : loaded FAISS index
+    metadata  : parallel metadata list
+    texts     : parallel chunk strings
+    model     : the same embedding model used at build time
+    k         : number of candidates to retrieve before filtering
+    min_score : minimum cosine similarity to include in results.
+                Chunks below this threshold are silently dropped.
+                Default 0.40 — set to 0.0 to return all k results.
+
+    Returns
+    -------
+    List of dicts (may be shorter than k if low-scoring chunks are filtered):
+        rank, score, confidence, book, friendly_name, chunk_idx, text
+
+    Confidence bands (cosine similarity):
+        high      ≥ 0.70  — strong semantic match, use freely
+        medium    ≥ 0.55  — acceptable, flag as uncertain in prompts
+        low       ≥ 0.40  — weak, include cautiously
+        very_low  < 0.40  — filtered out by default
+
+    Notes
+    -----
+    Clinical vignettes (scenario-style questions) tend to score lower than
+    direct medical questions because incidental words ("58-year-old man",
+    "presents with") dilute the embedding. The RAG pipeline handles this by
+    running SpaCy NER to extract key entities before querying, then querying
+    with the entity string rather than the raw vignette. This function is
+    the low-level retriever — entity extraction happens upstream.
+    """
+    prefixed = QUERY_INSTRUCTION + query
+    query_vec = model.encode(
+        [prefixed],
+        convert_to_numpy=True,
+        normalize_embeddings=True,
+    ).astype(np.float32)
+
+    scores, indices = index.search(query_vec, k)
+
+    results = []
+    for rank, (score, idx) in enumerate(zip(scores[0], indices[0])):
+        if idx < 0:
+            continue
+        if float(score) < min_score:
+            continue   # drop chunks below threshold
+        meta = metadata[idx]
+        results.append({
+            "rank":          rank + 1,
+            "score":         float(score),
+            "confidence":    score_band(float(score)),
+            "book":          meta["book"],
+            "friendly_name": meta["friendly_name"],
+            "chunk_idx":     meta["chunk_idx"],
+            "text":          texts[idx],
+        })
+    return results
+
+
+# ── Top-level build pipeline ──────────────────────────────────────────────────
+
+def build_index(
+    textbook_dir: Path | str | None = None,
+    out_dir: Path | str | None = None,
+    model_name: str | None = None,
+    chunk_size: int = CHUNK_SIZE,
+    overlap: int = CHUNK_OVERLAP,
+    batch_size: int = 32,
+) -> None:
+    """
+    Full pipeline: chunk → embed → index → save.
+
+    Called from notebook 01_vectorstore_build.ipynb.
+    Runtime: ~60 min on Colab T4 at batch_size=16 (Qwen3-0.6B).
+    """
+    os.environ.setdefault("PYTORCH_ALLOC_CONF", "expandable_segments:True")
+
+    print("=" * 60)
+    print(" EMMA vectorstore build")
+    print("=" * 60)
+
+    texts, metadata = chunk_all_textbooks(
+        textbook_dir=textbook_dir,
+        chunk_size=chunk_size,
+        overlap=overlap,
+    )
+
+    model = load_embedding_model(model_name)
+    print(f"\n[Vectorstore] Embedding {len(texts):,} chunks (batch_size={batch_size})…")
+    embeddings = embed_texts(texts, model, batch_size=batch_size)
+
+    index = build_faiss_index(embeddings)
+
+    save_index_with_texts(
+        index=index,
+        metadata=metadata,
+        texts=texts,
+        out_dir=out_dir,
+        model_name=model_name or BIOMEDICAL_MODEL,
+    )
+
+    print("\n[Vectorstore] Build complete.")
