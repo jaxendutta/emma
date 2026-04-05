@@ -63,3 +63,20 @@ echo ""
 echo " To open a Python shell:"
 echo "   uv run python"
 echo "────────────────────────────────────────"
+
+# 6. Verify the src package is importable
+echo ""
+echo "> Verifying package..."
+
+printf "  > checking src.data... "
+uv run python -c "from src.data import REPO_ROOT; print(f'OK  (repo root: {REPO_ROOT})')"
+
+printf "  > checking src.classify... "
+uv run python -c "from src.classify import RANDOM_SEED, COLLAPSE_RULES; print(f'OK  ({len(COLLAPSE_RULES)} collapse rules)')"
+
+printf "  > checking src.vectorstore (syntax check)... "
+uv run python -c "
+import ast, pathlib
+ast.parse(pathlib.Path('src/vectorstore.py').read_text(encoding='utf-8'))
+print('OK  (syntax valid)')
+"

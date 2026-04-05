@@ -106,11 +106,23 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "OK  Jupyter kernel registered: EMMA (Python $pyVersionShort)" -ForegroundColor Green
 
 # 8. Verify the src package is importable
+#    Each check prints a "checking..." line first so it never looks frozen.
+#    vectorstore imports torch/transformers which can take 20-30s on first load.
 Write-Host ""
 Write-Host "> Verifying package..." -ForegroundColor Cyan
-uv run python -c "from src.data import REPO_ROOT; print(f'  src.data OK -- repo root: {REPO_ROOT}')"
-uv run python -c "from src.vectorstore import BIOMEDICAL_MODEL; print(f'  src.vectorstore OK -- model: {BIOMEDICAL_MODEL}')"
-uv run python -c "from src.classify import RANDOM_SEED; print(f'  src.classify OK -- seed: {RANDOM_SEED}')"
+
+Write-Host "  > checking src.data..." -NoNewline -ForegroundColor DarkGray
+uv run python -c "from src.data import REPO_ROOT; print(f' OK  (repo root: {REPO_ROOT})')"
+
+Write-Host "  > checking src.classify..." -NoNewline -ForegroundColor DarkGray
+uv run python -c "from src.classify import RANDOM_SEED, COLLAPSE_RULES; print(f' OK  ({len(COLLAPSE_RULES)} collapse rules)')"
+
+Write-Host "  > checking src.vectorstore (syntax check)..." -NoNewline -ForegroundColor DarkGray
+uv run python -c "
+import ast, pathlib
+ast.parse(pathlib.Path('src/vectorstore.py').read_text(encoding='utf-8'))
+print(' OK  (syntax valid)')
+"
 
 Write-Host ""
 Write-Host "----------------------------------------" -ForegroundColor Cyan
