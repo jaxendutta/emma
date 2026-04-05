@@ -1,24 +1,31 @@
 # EMMA — Emergency Medicine Mentoring Agent
 
-## What's EMMA
+## 1. Overview
 
 EMMA is a conversational medical study agent for medical students. It has two modes:
 
-- **Explain / Q&A mode** — ask any medical question; EMMA retrieves relevant passages from 18 medical textbooks and generates a grounded answer via a local LLM
-- **Quiz mode** — ask EMMA to quiz you on a topic; it serves a real USMLE question from MedQA, takes your answer conversationally, and critiques it with reference to the correct answer and supporting textbook evidence
+1. Explain / Q&A Mode
 
-The central research question is: **does textbook-grounded RAG improve small LLM accuracy on MedQA/MedMCQA compared to a baseline without retrieval?** Results are benchmarked against AMG-RAG's published scores of 74.1% F1 / 66.34% accuracy on the same datasets.
+   Ask any medical question; EMMA retrieves relevant passages from 18 medical textbooks and generates a grounded answer via a local LLM
 
-All inference runs locally via Ollama — no OpenAI API, no cloud LLM calls.
+2. Quiz Mode
 
-## Architecture
+   Ask EMMA to quiz you on a topic; it serves a real USMLE question from MedQA, takes your answer conversationally, and critiques it with reference to the correct answer and supporting textbook evidence
+
+The central research question is: 
+
+> Does textbook-grounded RAG improve small LLM accuracy on MedQA/MedMCQA compared to a baseline without retrieval?
+
+Results are benchmarked against AMG-RAG's published scores of 74.1% F1 / 66.34% accuracy on the same datasets. All inference runs locally via Ollama, with no OpenAI API, no cloud LLM calls.
+
+## 2. Architecture
 
 ```mermaid
 graph TD
     A[User query] --> B[SpaCy NER en_core_sci_md]
     B -->|extract: symptoms, conditions, meds| C[FAISS Retrieval]
     D[(18 Medical Textbooks)] -.->|Qwen3-Embedding-0.6B| C
-    C -->|top-k chunks + confidence| E[Specialty Classifier TF-IDF + SVM]
+    C -->|top-k chunks + confidence bands| E[Specialty Classifier TF-IDF + SVM]
     E -->|routes to domain| F[OWL Ontology Knowledge Graph]
     F -->|structured facts| G[Local LLM via Ollama]
     H[3-4B Models: Qwen3, Gemma3] -.-> G
@@ -26,178 +33,221 @@ graph TD
     I --> J[User response]
 ```
 
-Each component maps directly to a course module:
+## 3. Data
 
-| Component              | Course week    | Method                                          |
-| ---------------------- | -------------- | ----------------------------------------------- |
-| SpaCy NER              | Week 7         | `en_core_sci_md` biomedical model               |
-| FAISS retrieval        | Week 7         | Sentence-BERT / Qwen3-Embedding                 |
-| Specialty classifier   | A1 methodology | TF-IDF + Linear SVM                             |
-| BERTopic clustering    | Week 7         | MedQA question clustering by specialty          |
-| Knowledge graph        | Week 7         | OWL ontology + NetworkX                         |
-| Dialogflow fulfillment | Week 8         | FastAPI webhook backend                         |
-| Recommender system     | Week 12        | Surprise SVD on user × topic interaction matrix |
+| #   | Source               | Role                            | Size                              |
+| --- | -------------------- | ------------------------------- | --------------------------------- |
+| 1   | 18 Medical Textbooks | RAG knowledge base              | ~87M chars, 36,723 chunks         |
+| 2   | MedQA USMLE          | Quiz question bank + evaluation | 12,723 questions (train/dev/test) |
+| 3   | MedMCQA              | Classifier training             | 182,822 labelled questions        |
 
-## Data
+The textbooks are the literal source material that USMLE questions were written from, making them the ideal retrieval corpus. MedQA and MedMCQA are used as stated above.
 
-| Source                   | Role                            | Size                              |
-| ------------------------ | ------------------------------- | --------------------------------- |
-| **18 Medical Textbooks** | RAG knowledge base              | ~87M chars, 36,723 chunks         |
-| **MedQA USMLE**          | Quiz question bank + evaluation | 12,723 questions (train/dev/test) |
-| **MedMCQA**              | Evaluation benchmark            | 193,155 questions                 |
+Data lives in `data/` (committed to git).
 
-The textbooks are the literal source material that USMLE questions were written from — making them the ideal retrieval corpus. MedQA and MedMCQA are used for evaluation only, not training.
+# What's Done
 
-Data lives in `data/` (not committed to git — too large). See setup instructions below.
+## 4. Data loaders
 
-## What's Done
+### 4.1. Relevant files
 
-- `src/data.py` — Data loaders
+- `src/data.py` — data loading functions
 
-    Unified loaders for all three data sources. Auto-detects the repo root from `pyproject.toml` so paths work regardless of working directory.
+Unified loaders for all three data sources. Auto-detects the repo root from `pyproject.toml`.
 
-    ```python
-    from src.data import load_medqa, load_medmcqa, load_all_textbooks
-    df = load_medqa(split='train')        # 10,178 rows
-    books = load_all_textbooks()          # dict of 18 textbooks
-    ```
+```python
+from src.data import load_medqa, load_medmcqa, load_all_textbooks
+df    = load_medqa(split='train')   # 10,178 rows
+books = load_all_textbooks()        # dict of 18 textbooks
+```
 
-- `src/vectorstore.py` — FAISS vectorstore
+## 5. FAISS vectorstore
 
-   Full pipeline: chunk 18 textbooks → embed with Qwen3-Embedding-0.6B → build FAISS index → persist to disk. Includes score thresholding and confidence bands on retrieval.
+### 5.1. Relevant files
 
-   **Embedding model:** `Qwen/Qwen3-Embedding-0.6B` — #1 open-source embedding model on MTEB multilingual leaderboard (score 70.58, June 2025). Apache 2.0, 32K token context, 1024-dim embeddings. Loaded in float16 on GPU to halve VRAM usage.
+- `src/vectorstore.py` — embedding + FAISS index functions
+- `notebooks/01_vectorstore_build.ipynb` — builds the vectorstore from textbooks
 
-   **Index:** FAISS `IndexFlatIP` (exact cosine similarity). 36,723 vectors at 1024 dimensions. Build time ~60 min on Colab T4 GPU.
+Chunks 18 textbooks -> embeds with Qwen3-Embedding-0.6B -> builds FAISS IndexFlatIP -> saves to disk. Build runs on Colab T4 GPU (~60 min); all subsequent usage loads in under 1 second on CPU.
 
-   **Retrieval quality:** Score bands calibrated from observed results:
-      - `high` ≥ 0.70 — strong match, use freely
-      - `medium` ≥ 0.55 — acceptable, flag to LLM as uncertain
-      - `low` ≥ 0.40 — weak, include cautiously
-      - `very_low` < 0.40 — filtered out by default
+### 5.2. Embedding Model
 
-    Clinical vignettes score lower than direct questions because incidental words dilute the embedding. The RAG pipeline (notebook 04) handles this by running NER first and querying with extracted entities rather than the raw vignette text.
+`Qwen/Qwen3-Embedding-0.6B` — #1 open-source embedding model on MTEB (June 2025), Apache 2.0, 32K token context, 1024-dim. Loaded in float16 on GPU.
 
-    ```python
-    from src.vectorstore import load_index_with_texts, load_embedding_model, search
+### 5.3. Index
 
-    index, metadata, texts = load_index_with_texts()   # <1 second on SSD
-    model = load_embedding_model()
-    results = search("mechanism of septic shock", index, metadata, texts, model, k=5)
-    # results[i] = {rank, score, confidence, book, friendly_name, chunk_idx, text}
-    ```
+36,723 vectors at 1024 dimensions, 143 MB on disk.
 
-- `notebooks/00_data_exploration.ipynb`
+### 5.4. Retrieval Quality Observed
 
-   Shapes, samples, and distributions for all three data sources. No modelling.
+| #   | Query type                           | Score range        | Books surfacing                  |
+| --- | ------------------------------------ | ------------------ | -------------------------------- |
+| 1   | Direct question (e.g. anaphylaxis)   | 0.72-0.73 (high)   | Harrison's, Nelson Pediatrics    |
+| 2   | Direct question (e.g. beta blockers) | 0.72-0.73 (high)   | Harrison's, Katzung Pharmacology |
+| 3   | Clinical vignette (inferior STEMI)   | 0.63-0.66 (medium) | Harrison's, First Aid Step 2     |
 
-- `notebooks/01_vectorstore_build.ipynb`
+Clinical vignettes score lower because incidental language ("58-year-old man", "presents with") dilutes the embedding. The RAG pipeline handles this by running NER first and querying with extracted clinical entities.
 
-   Full build pipeline with Colab T4 support, GPU cleanup, step-by-step progress, and automatic Drive backup. Includes smoke tests for chunking and embedding quality.
+### 5.5. Confidence Bands
 
-## What's Next
+Confidence bands used downstream:
 
-- `02_classification.ipynb` — Specialty classifier
+- `high` >= 0.70 — use freely
+- `medium` >= 0.55 — flag to LLM as uncertain
+- `low` >= 0.40 — include cautiously
+- `very_low` < 0.40 — filtered out by default
 
-   Train a multi-class classifier on MedQA questions to predict medical specialty (cardiology, neurology, etc.). Follows A1 methodology exactly: TF-IDF features, linear SVM, 10-fold stratified cross-validation, weighted F1. The classifier routes queries to domain-appropriate retrieval at inference time.
+```python
+from src.vectorstore import load_index_with_texts, load_embedding_model, search
+index, metadata, texts = load_index_with_texts()
+model   = load_embedding_model()
+results = search("mechanism of septic shock", index, metadata, texts, model, k=5)
+# each result: {rank, score, confidence, book, friendly_name, chunk_idx, text}
+```
 
-- `03_clustering.ipynb` — BERTopic topic discovery
+## 6. Specialty classifier
 
-   Cluster MedQA questions by specialty using BERTopic (week 7 lecture content). Follows A2 three-metric evaluation framework: Silhouette score, Cohen's κ, Topic Coherence C_V. Provides an unsupervised view of the question space to complement the supervised classifier.
+### 6.1. Relevant files
 
-- `04_rag_pipeline.ipynb` — End-to-end RAG
+- `src/classify.py` — classification functions
+- `notebooks/02_classification.ipynb` — trains and evaluates the specialty classifier
 
-   Wire up the full pipeline: SpaCy NER → FAISS retrieval → OWL ontology lookup → prompt construction → local LLM via Ollama. Compares answers with and without RAG context. This is where the low-score handling becomes most important — low-confidence retrievals are flagged in the prompt so the LLM knows to hedge.
+Trains on MedMCQA (179,777 questions, 19 specialties) and applies to MedQA (12,723 questions) to produce specialty routing tags for the RAG pipeline. Follows A1 methodology: full feature x classifier grid, 10-fold stratified CV, weighted F1 + Cohen's kappa.
 
-- `05_quiz_mode.ipynb` — Quiz logic
+### 6.2. Corpus characterisation
 
-   Serve MedQA questions conversationally, accept free-text answers, and generate critiques grounded in retrieved textbook passages. Includes the Surprise SVD recommender that tracks which specialties a user struggles with and recommends what to study next.
+Mean inter-category TF-IDF cosine similarity = **0.72** on MedMCQA vs ~0.95 on the A1 PubMed AI corpus. Lower overlap makes this a more tractable classification task.
 
-- `06_evaluation.ipynb` — Benchmark
+### 6.3. Grid Results (Stratified 20k CV Sample)
 
-   Evaluate 3–4 Ollama models (Qwen3, Gemma3, Phi4-mini, etc.) on 100 MedQA questions, with and without RAG context. Primary metric: accuracy on the 4-option multiple choice. Compare against AMG-RAG's published 66.34% baseline. Secondary metrics: ROUGE/BLEU on critique quality, inference latency per model.
+| #   | Configuration              | CV Weighted F1        | CV Cohen's kappa      |
+| --- | -------------------------- | --------------------- | --------------------- |
+| 1   | TF-IDF Bigrams + LinearSVC | **0.5424 +/- 0.0086** | **0.5089 +/- 0.0096** |
+| 2   | BOW + LinearSVC            | 0.5042 +/- 0.0100     | 0.4683 +/- 0.0109     |
+| 3   | MiniLM-L6-v2 + LinearSVC   | 0.4635 +/- 0.0254     | 0.4297 +/- 0.0268     |
+| 4   | BOW + MNB                  | 0.4590 +/- 0.0084     | 0.4294 +/- 0.0089     |
 
-- `src/api.py` — FastAPI webhook
+TF-IDF Bigrams + LinearSVC is the champion, which is consistent with A1's finding. The CV uses a 20k sample for model selection; the champion is retrained on all 179,777 questions.
 
-   Dialogflow ES fulfillment backend. Receives intent + entity payloads from Dialogflow, routes through the EMMA pipeline, and returns structured responses. Enables the Dialogflow chatbot (built in A4) to serve live RAG-grounded answers instead of static responses.
+### 6.4. Full-Corpus Holdout Performance
 
-## Setup
+- Weighted F1 = 0.69
+- Cohen's kappa = 0.66
 
-### Prerequisitess
+The CV-to-holdout gap (0.54 -> 0.69) is expected from 9x more training data and is not a data leakage issue.
 
-- Python 3.11+
-- [uv](https://github.com/astral-sh/uv) package manager
-- [Ollama](https://ollama.com) (for LLM inference, notebooks 04+)
+### 6.5. Comparison to A1
 
-### Install
+A1 achieved 0.681 F1 on 5 classes (0.95 similarity). We achieve 0.69 on 19 classes (0.72 similarity), which is a harder problem at comparable performance, supporting the generalisation hypothesis.
+
+### 6.6. Notable confusion pairs
+
+| #   | True Specialty | Predicted Specialty | % of true specialty questions | Clinical rationale                     |
+| --- | -------------- | ------------------- | ----------------------------- | -------------------------------------- |
+| 1   | Dermatology    | Dental              | 34%                           | shared tissue vocabulary               |
+| 2   | Orthopaedics   | Surgery             | 19%                           | clinically adjacent                    |
+| 3   | Pathology      | Internal Medicine   | 13%                           | overlapping disease mechanism language |
+
+## 7. Topic Clustering
+
+### 7.1. Relevant files
+
+- `src/cluster.py` — clustering functions
+- `notebooks/03_clustering.ipynb` — BERTopic clustering and evaluation against A2 baselines.
+
+Applies BERTopic to discover latent topic structure in MedQA questions. Evaluates against A2 baseline methods using the three A2 metrics: Cohen's kappa, Silhouette score, Topic Coherence C_v.
+
+### 7.2. Setup
+
+12,723 MedQA questions embedded with MiniLM-L6-v2. Specialty labels from notebook 02 used as ground truth for kappa evaluation.
+
+### 7.3. Results
+
+| #   | Method                              | K   | Outliers    | Cohen's kappa | Silhouette | C_v Coherence |
+| --- | ----------------------------------- | --- | ----------- | ------------- | ---------- | ------------- |
+| 1   | TF-IDF + LSA + GMM (A2 baseline)    | 19  | 0 (0%)      | 0.014         | --         | --            |
+| 2   | Embeddings + Spectral (A2 baseline) | 19  | 0 (0%)      | 0.024         | 0.064      | --            |
+| 3   | BERTopic (automatic K)              | 39  | 4,617 (36%) | -0.020        | 0.072      | **0.475**     |
+
+### 7.4. Interpretations
+
+1. Near-Zero Kappa
+
+   Kappa here measures agreement between discovered cluster IDs and 19 specialty labels. Low kappa indicates that BERTopic found 39 finer-grained topic groups that do not align with the 19 specialty boundaries. This is expected: the topics are more granular than the labels. Topic 0 (chest/cardiac terms) is 70.6% Internal Medicine; Topic 4 (gestation/pregnancy) is 72.4% Obstetrics, which is clinically sensible, just below the specialty level of granularity.
+
+   The A2 baselines also show near-zero kappa on this corpus. The gap to A2's reference kappa of 0.418 is fully explained by corpus differences: A2 used 5 balanced classes with long abstracts at 0.95 similarity; here we have 19 imbalanced classes with 20-word questions at 0.72 similarity. This is a documented finding, not a methodology failure.
+
+2. Topic Coherence $C_v = 0.475$
+
+   This confirms the topic word representations are internally coherent even where they don't align with specialty labels.
+
+3. Outlier Rate = 36%
+
+   This reflects the short question stem length (~20 words). BERTopic's HDBSCAN component requires sufficient text density. Outlier questions (-1 topic) fall back to specialty-only routing in the RAG pipeline, with no questions dropped.
+
+The 39 topic assignments provide finer-grained routing than specialty labels. A question in Internal Medicine that belongs to topic 0 (chest/cardiac) retrieves from cardiology-relevant textbook chunks rather than the full Internal Medicine retrieval pool.
+
+# What's Next
+
+## 8. RAG Pipeline
+
+### 8.1. Relevant files
+
+-`notebooks/04_rag_pipeline.ipynb`
+
+Wire up SpaCy NER -> FAISS retrieval -> OWL ontology -> prompt construction -> local LLM. Compare answers with and without RAG on a set of MedQA questions. Low-confidence retrievals flagged in prompt.
+
+## 9. Quiz Mode
+
+### 9.1. Relevant files
+
+-`notebooks/05_quiz_mode.ipynb`
+
+Conversational quiz: serve MedQA question, accept free-text answer, generate textbook-grounded critique. Includes Surprise SVD recommender tracking user performance by specialty.
+
+## 10. Evaluation Benchmark
+
+### 10.1. Relevant files
+
+- `notebooks/06_evaluation_benchmark.ipynb`
+
+Benchmark 3-4 Ollama models on 100 MedQA questions with and without RAG. Primary metric: 4-option accuracy. Compare to AMG-RAG's 66.34% baseline.
+
+## 11. FastAPI Webhook
+
+### 11.1. Relevant files
+
+- `src/api.py`
+
+FastAPI webhook for Dialogflow ES. Routes intent + entity payloads through the EMMA pipeline.
+
+## 12. Setup
+
+### 12.1. Prerequisites
+
+- Python 3.11+, [uv](https://github.com/astral-sh/uv), [Ollama](https://ollama.com) (notebooks 04+)
+
+### 12.2. Install
 
 ```bash
 git clone https://github.com/jaxendutta/emma.git
 cd emma
-
-# For Unix-based systems (Linux, macOS):
-bash scripts/setup.sh   # uv sync + installs en_core_sci_md + registers Jupyter kernel
-
-# For Windows (PowerShell):
-scripts\setup.ps1    # uv sync + installs en_core_sci_md + registers Jupyter kernel
+bash scripts/setup.sh      # Unix / WSL
+scripts\setup.ps1          # Windows PowerShell
 ```
 
-### Data Directory
+### 12.3. Vectorstore
 
-The `data/` folder is not in the repository (too large for git). Place the following:
+Pre-built files (too large for git) — download from the shared Google Drive folder and place in `models/vectorstore/`. Run the auto-download cell in notebook 01 section 4. Or rebuild from scratch via notebook 01 on Colab T4 (~60 min).
 
-```plain
-data/MedQA-USMLE/questions/US/4_options/   # train.jsonl, dev.jsonl, test.jsonl
-data/MedQA-USMLE/textbooks/en/             # 18 .txt files
-data/MedMCQA/                              # train.parquet, validation.parquet, test.parquet
-```
+## 13. Key Design Decisions
 
-### Vectorstore Directory
-
-The pre-built FAISS index is stored in Google Drive (too large for git). Download the 4 files and place them in `models/vectorstore/`:
-
-```plain
-index.faiss    143 MB
-texts.pkl       97 MB
-metadata.pkl     1 MB
-config.json     <1 MB
-```
-
-After placing these files, `load_index_with_texts()` loads in under 1 second. All notebooks from 02 onward run on CPU — no GPU needed after the one-time build.
-
-To rebuild the index from scratch, run `notebooks/01_vectorstore_build.ipynb` on a Colab T4 GPU (~60 min).
-
-## Key Design Decisions
-
-- **Textbooks as RAG corpus**
-
-   MedQA questions were literally written from these 18 textbooks, making them the ideal retrieval source. This is faster and more reproducible than AMG-RAG's live PubMed querying.
-
-- **Qwen3-Embedding-0.6B over BGE-M3**
-
-   #1 open-source embedder on MTEB as of 2025. 32K token context means chunking headaches are minimal. Apache 2.0 license.
-
-- **Local LLMs via Ollama**
-
-   All inference runs locally, no API costs, and the model selector makes it a direct evaluation apparatus for the research question about LLM scale.
-
-- **Separation of concerns**
-
-   The deterministic ML pipeline (classifier + retriever) makes decisions; the LLM only generates the natural-language explanation. This keeps the safety-critical parts auditable.
-
-- **Score thresholding in retrieval**
-
-   Chunks with cosine similarity < 0.40 are filtered out. Chunks between 0.40–0.70 are flagged with `"confidence": "low"/"medium"` so downstream components know to hedge. Clinical vignettes naturally score lower than direct questions — NER-based query rewriting (upstream of `search()`) addresses this.
-
-## Course Component Mapping
-
-| Data Science Applications Topic | EMMA implementation                                   |
-| ------------------------------- | ----------------------------------------------------- |
-| Text classification (A1)        | Specialty classifier on MedQA questions               |
-| Clustering (A2)                 | BERTopic topic discovery on question embeddings       |
-| Named entity recognition (Wk 7) | SpaCy `en_core_sci_md` for clinical entity extraction |
-| Sentence embeddings (Wk 7)      | Qwen3-Embedding-0.6B + FAISS vector index             |
-| Topic modelling (Wk 7)          | BERTopic for MedQA specialty clustering               |
-| Knowledge graphs (Wk 7)         | OWL emergency medicine ontology + NetworkX            |
-| Dialogflow / chatbots (Wk 8)    | Dialogflow ES agent + FastAPI fulfillment webhook     |
-| Recommender systems (Wk 12)     | Surprise SVD: user × specialty interaction matrix     |
+| #   | Decision                          | Rationale                                                                                                                                                                                                |
+| --- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Textbooks as RAG corpus           | MedQA questions were written from these 18 textbooks, making them the ideal retrieval source. Faster and more reproducible than live PubMed querying.                                                    |
+| 2   | Qwen3-Embedding-0.6B              | #1 open-source MTEB embedder (June 2025), 32K context, Apache 2.0. Float16 on GPU halves VRAM with no quality loss.                                                                                      |
+| 3   | Local LLMs via Ollama             | no API costs; model selector is a direct evaluation apparatus for the LLM scale research question.                                                                                                       |
+| 4   | Separation of concerns            | the ML pipeline makes routing decisions; the LLM generates explanations only. Safety-critical routing is deterministic and auditable.                                                                    |
+| 5   | Data-driven subject normalisation | specialty labels are built from the actual `subject_name` column at runtime. Only deliberate collapse rules (e.g. `"Medicine"` -> `"Internal Medicine"`) are hardcoded.                                  |
+| 6   | Stratified CV subsampling         | 20k stratified sample for model selection (sufficient to rank configurations); champion retrained on full 179k corpus. Documented explicitly to avoid misinterpreting the CV-to-holdout performance gap. |
+| 7   | Score thresholding                | chunks below 0.40 filtered; 0.40-0.70 carry a confidence flag for LLM hedging. NER-based query rewriting handles clinical vignette scoring.                                                              |
