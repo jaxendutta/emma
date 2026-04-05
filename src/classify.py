@@ -19,7 +19,7 @@ Feature types evaluated:
   BOW, TF-IDF Bigrams, Word2Vec, Sentence Embeddings (MiniLM / Qwen3)
 
 Classifiers evaluated:
-  LinearSVC, Naive Bayes (MNB), Random Forest
+  LinearSVC, Naive Bayes (MNB)
 
 Omitted with justification (see notebook section 4 for full rationale):
   LR, SGD, KNN, XGBoost, CatBoost, LightGBM, DistilBERT,
@@ -32,7 +32,6 @@ weighted F1 + Cohen's kappa. Champion retrained on full corpus.
 from __future__ import annotations
 
 import time
-from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -41,7 +40,6 @@ from sklearn.metrics import classification_report, cohen_kappa_score, f1_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, normalize
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 from tqdm import tqdm
@@ -55,6 +53,8 @@ from tqdm import tqdm
 # similar to neighbouring classes to train reliably on their own are merged.
 # The full subject list is NOT hardcoded here — it is read from the data.
 # Any subject not listed in COLLAPSE_RULES passes through unchanged.
+
+RANDOM_SEED = 42
 
 COLLAPSE_RULES: dict[str, str] = {
     "Medicine":                     "Internal Medicine",
@@ -94,8 +94,6 @@ def build_subject_map(subject_series: "pd.Series") -> dict[str, str]:
         else:
             mapping[subject] = COLLAPSE_RULES.get(subject, subject)
     return mapping
-
-RANDOM_SEED = 42
 
 CLASSIFIERS = {
     "LinearSVC": lambda: LinearSVC(C=1.0, max_iter=2000, random_state=RANDOM_SEED),
