@@ -42,12 +42,13 @@ uv sync
 #    uv pip install targets the project .venv directly — no system pip confusion
 echo ""
 echo "> Installing SpaCy biomedical model (en_core_sci_md)..."
-uv pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_md-0.5.4.tar.gz
+uv pip install --no-deps https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_md-0.5.4.tar.gz
 
 # 5. Register the kernel so Jupyter notebooks find the right environment
 echo ""
 echo "> Registering Jupyter kernel..."
-uv run python -m ipykernel install --user --name=emma --display-name="EMMA"
+PYTHON_VERSION=$(uv run python --version | cut -d' ' -f2 | cut -d'.' -f1,2)
+uv run python -m ipykernel install --user --name=emma --display-name="EMMA (Python $PYTHON_VERSION)"
 
 echo ""
 echo "────────────────────────────────────────"

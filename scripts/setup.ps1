@@ -18,7 +18,7 @@ $ErrorActionPreference = "Stop"
 
 Write-Host ""
 Write-Host "----------------------------------------" -ForegroundColor Cyan
-Write-Host "  EMMA -- environment setup (Windows)"    -ForegroundColor Cyan
+Write-Host "  EMMA -- Environment Setup (Windows)"    -ForegroundColor Cyan
 Write-Host "----------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
@@ -43,14 +43,15 @@ $uvVersion = uv --version
 Write-Host "OK  uv found: $uvVersion" -ForegroundColor Green
 
 # 3. Check Python 3.11+
-$pythonVersion = python --version 2>&1
-if ($LASTEXITCODE -ne 0) {
+try {
+    $pythonVersion = python --version 2>&1
+    Write-Host "OK  $pythonVersion" -ForegroundColor Green
+} catch {
     Write-Host ""
     Write-Host "ERROR: Python not found." -ForegroundColor Red
     Write-Host "Download Python 3.11+ from https://www.python.org/downloads/" -ForegroundColor Yellow
     exit 1
 }
-Write-Host "OK  $pythonVersion" -ForegroundColor Green
 
 # 4. Create .env from template if it doesn't exist
 if (-not (Test-Path ".env")) {
@@ -67,7 +68,7 @@ if (-not (Test-Path ".env")) {
 
 # 5. Sync the virtual environment
 Write-Host ""
-Write-Host "Installing dependencies (uv sync)..." -ForegroundColor Cyan
+Write-Host "> Installing dependencies (uv sync)..." -ForegroundColor Cyan
 uv sync
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: uv sync failed." -ForegroundColor Red
@@ -76,10 +77,17 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "OK  Dependencies installed" -ForegroundColor Green
 
 # 6. Install the SpaCy biomedical model (en_core_sci_md)
-#    Not on PyPI -- must be installed directly from the release URL
+#
+#    en_core_sci_md 0.5.4 declares a dependency on spacy<3.8, which would
+#    pull in blis 0.7.11 — a package with no prebuilt wheel for Python 3.13
+#    on Windows (requires a C compiler to build from source).
+#
+#    The fix is --no-deps: install the model wheel only, without touching
+#    the already-correct spacy 3.8.x + blis 1.3.x that uv sync already
+#    installed. The model works fine against spacy 3.8.x in practice.
 Write-Host ""
-Write-Host "Installing SpaCy biomedical model (en_core_sci_md)..." -ForegroundColor Cyan
-uv pip install "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_md-0.5.4.tar.gz"
+Write-Host "> Installing SpaCy biomedical model (en_core_sci_md, --no-deps)..." -ForegroundColor Cyan
+uv pip install --no-deps "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_md-0.5.4.tar.gz"
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to install en_core_sci_md." -ForegroundColor Red
     exit 1
@@ -88,7 +96,7 @@ Write-Host "OK  en_core_sci_md installed" -ForegroundColor Green
 
 # 7. Register the Jupyter kernel so notebooks find the right environment
 Write-Host ""
-Write-Host "Registering Jupyter kernel..." -ForegroundColor Cyan
+Write-Host "> Registering Jupyter kernel..." -ForegroundColor Cyan
 $pyVersionShort = uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
 uv run python -m ipykernel install --user --name=emma --display-name="EMMA (Python $pyVersionShort)"
 if ($LASTEXITCODE -ne 0) {
@@ -99,7 +107,7 @@ Write-Host "OK  Jupyter kernel registered: EMMA (Python $pyVersionShort)" -Foreg
 
 # 8. Verify the src package is importable
 Write-Host ""
-Write-Host "Verifying package..." -ForegroundColor Cyan
+Write-Host "> Verifying package..." -ForegroundColor Cyan
 uv run python -c "from src.data import REPO_ROOT; print(f'  src.data OK -- repo root: {REPO_ROOT}')"
 uv run python -c "from src.vectorstore import BIOMEDICAL_MODEL; print(f'  src.vectorstore OK -- model: {BIOMEDICAL_MODEL}')"
 uv run python -c "from src.classify import RANDOM_SEED; print(f'  src.classify OK -- seed: {RANDOM_SEED}')"
