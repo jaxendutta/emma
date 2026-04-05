@@ -35,13 +35,12 @@ graph TD
 
 ## 3. Data
 
-| #   | Source               | Role                            | Size                              |
-| --- | -------------------- | ------------------------------- | --------------------------------- |
-| 1   | 18 Medical Textbooks | RAG knowledge base              | ~87M chars, 36,723 chunks         |
-| 2   | MedQA USMLE          | Quiz question bank + evaluation | 12,723 questions (train/dev/test) |
-| 3   | MedMCQA              | Classifier training             | 182,822 labelled questions        |
+| #   | Source                                         | Role                                                             | Size                            |
+| --- | ---------------------------------------------- | ---------------------------------------------------------------- | ------------------------------- |
+| 1   | [MedQA USMLE](https://github.com/jind11/MedQA) | Quiz question bank + evaluation + RAG knowledge base (textbooks) | 12,723 questions + 18 textbooks |
+| 2   | [MedMCQA](https://github.com/MedMCQA/MedMCQA)  | Classifier training                                              | 182,822 labelled questions      |
 
-The textbooks are the literal source material that USMLE questions were written from, making them the ideal retrieval corpus. MedQA and MedMCQA are used as stated above.
+MedQA USMLE ships with two components: the questions themselves (used for quiz mode and evaluation) and 18 plain-text medical textbooks (used as the RAG retrieval corpus). The textbooks are the literal source material that USMLE questions were written from, making them the ideal retrieval corpus. MedMCQA is used for classifier training only — its `subject_name` labels provide the specialty ground truth that MedQA lacks.
 
 Data lives in `data/` (committed to git).
 
