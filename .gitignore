@@ -10,14 +10,8 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
-# Models (large files — don't commit the FAISS index)
-models/vectorstore/*.faiss
-models/vectorstore/*.pkl
-models/classifier/*.joblib
-
-# Data (don't commit raw datasets)
-# data/ Need uploading!
-# Add output dirs as needed
+# Models
+models/
 
 # OS
 .DS_Store
