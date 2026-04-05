@@ -100,7 +100,6 @@ RANDOM_SEED = 42
 CLASSIFIERS = {
     "LinearSVC": lambda: LinearSVC(C=1.0, max_iter=2000, random_state=RANDOM_SEED),
     "MNB":       lambda: MultinomialNB(),
-    "RF":        lambda: RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=RANDOM_SEED),
 }
 
 
