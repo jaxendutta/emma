@@ -16,18 +16,17 @@ is selected empirically on this corpus -- not assumed from A1, since
 MedMCQA is a different dataset.
 
 Feature types evaluated:
-  - BOW              (binary bag-of-words)
-  - TF               (term frequency, no IDF)
-  - TF-IDF           (unigrams)
-  - TF-IDF-Bigrams   (unigrams + bigrams, A1 champion config)
-  - Word2Vec         (mean-pooled gensim word vectors)
-  - Embeddings       (Qwen3-0.6B or MiniLM-L6-v2, pre-computed)
+  BOW, TF-IDF Bigrams, Word2Vec, Sentence Embeddings (MiniLM / Qwen3)
 
 Classifiers evaluated:
-  - LinearSVC        (A1 champion)
-  - Logistic Regression
+  LinearSVC, Naive Bayes (MNB), Random Forest
 
-Evaluation: 10-fold stratified CV, weighted F1 + Cohen's kappa.
+Omitted with justification (see notebook section 4 for full rationale):
+  LR, SGD, KNN, XGBoost, CatBoost, LightGBM, DistilBERT,
+  TF (no IDF), TF-IDF unigrams, Trigrams, Doc2Vec, LDA, FastText
+
+Evaluation: 10-fold stratified CV on stratified 20k sample,
+weighted F1 + Cohen's kappa. Champion retrained on full corpus.
 """
 
 from __future__ import annotations
@@ -38,11 +37,12 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report, cohen_kappa_score, f1_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, normalize
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 from tqdm import tqdm
 
@@ -61,8 +61,6 @@ COLLAPSE_RULES: dict[str, str] = {
     "Social & Preventive Medicine": "Public Health",
     "Forensic Medicine":            "Public Health",
     "Gynaecology & Obstetrics":     "Obstetrics & Gynaecology",
-    "Orthopaedics":                 "Surgery",
-    "ENT":                          "Surgery",
     "Skin":                         "Dermatology",
 }
 
@@ -101,9 +99,8 @@ RANDOM_SEED = 42
 
 CLASSIFIERS = {
     "LinearSVC": lambda: LinearSVC(C=1.0, max_iter=2000, random_state=RANDOM_SEED),
-    "LR":        lambda: LogisticRegression(
-                     C=1.0, max_iter=1000, random_state=RANDOM_SEED, n_jobs=-1
-                 ),
+    "MNB":       lambda: MultinomialNB(),
+    "RF":        lambda: RandomForestClassifier(n_estimators=200, n_jobs=-1, random_state=RANDOM_SEED),
 }
 
 
@@ -128,7 +125,8 @@ def normalise_subjects(series: pd.Series) -> pd.Series:
 def get_label_encoder(labels: pd.Series) -> LabelEncoder:
     """Fit and return a LabelEncoder on canonical specialty labels."""
     le = LabelEncoder()
-    le.fit(sorted(labels.unique()))
+    # Cast to plain str to avoid np.str_ showing up in printouts
+    le.fit(sorted(str(v) for v in labels.unique()))
     return le
 
 
