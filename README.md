@@ -12,7 +12,7 @@ EMMA is a conversational medical study agent for medical students. It has two mo
 
    Ask EMMA to quiz you on a topic; it serves a real USMLE question from MedQA, takes your answer conversationally, and critiques it with reference to the correct answer and supporting textbook evidence
 
-The central research question is: 
+The central research question is:
 
 > Does textbook-grounded RAG improve small LLM accuracy on MedQA/MedMCQA compared to a baseline without retrieval?
 
@@ -71,7 +71,22 @@ Chunks 18 textbooks -> embeds with Qwen3-Embedding-0.6B -> builds FAISS IndexFla
 
 ### 5.2. Embedding Model
 
-`Qwen/Qwen3-Embedding-0.6B` — #1 open-source embedding model on MTEB (June 2025), Apache 2.0, 32K token context, 1024-dim. Loaded in float16 on GPU.
+[Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) was selected for three reasons:
+
+1. Family Performance
+
+   The Qwen3 Embedding family's 8B variant ranks #6 on RTEB Healthcare with a score of 67.03(April 2026) and #1 on MTEB Multilingual (score 70.58, June 2025) among open-source models.
+
+2. GPU Budget
+
+   At 0.6B parameters (~1.2GB in float16), it fits on a Colab T4 GPU. The 8B variant requires ~16GB VRAM, which is unavailable on free-tier hardware.
+
+3. Context Window
+
+   32K tokens eliminates chunking boundary issues for long textbook passages.
+
+> [!NOTE]
+> `Qwen3-Embedding-0.6B` has not been independently evaluated on RTEB Healthcare. The closest evaluated model at the same parameter scale is `jina-embeddings-v5-text-small` (also 0.44B, RTEB Healthcare score 62.35, rank 16). A known limitation of this project is that a direct healthcare retrieval benchmark comparison for the 0.6B model is not available.
 
 ### 5.3. Index
 
