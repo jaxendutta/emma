@@ -142,3 +142,19 @@ Write-Host "    Download from Google Drive and place in models\vectorstore\" -Fo
 Write-Host "    Or run notebook 01 on Colab T4 to build from scratch." -ForegroundColor Yellow
 Write-Host "----------------------------------------" -ForegroundColor Cyan
 Write-Host ""
+
+Write-Host ""
+Write-Host "────────────────────────────────────────" -ForegroundColor Cyan
+Write-Host "  LLM Model Setup (Notebooks 04-06)" -ForegroundColor Green
+Write-Host "────────────────────────────────────────" -ForegroundColor Cyan
+Write-Host "  Models are defined in config/models.json" -ForegroundColor White
+Write-Host "  Three models require HF token + license acceptance:" -ForegroundColor White
+Write-Host "" -ForegroundColor White
+Write-Host "   MedGemma 4B : https://huggingface.co/google/medgemma-4b-it" -ForegroundColor White
+Write-Host "   Gemma 3 4B  : https://huggingface.co/google/gemma-3-4b-it" -ForegroundColor White
+Write-Host "   Ministral 3B: https://huggingface.co/mistralai/Ministral-3B-Instruct-2410" -ForegroundColor White
+Write-Host "" -ForegroundColor White
+Write-Host " Get a token:     https://huggingface.co/settings/tokens" -ForegroundColor White
+Write-Host " Set your token:  export HF_TOKEN=hf_your_token_here" -ForegroundColor White
+Write-Host " Or add to .env: HF_TOKEN=hf_your_token_here" -ForegroundColor White
+Write-Host "────────────────────────────────────────" -ForegroundColor Cyan

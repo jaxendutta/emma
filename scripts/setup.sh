@@ -80,3 +80,19 @@ import ast, pathlib
 ast.parse(pathlib.Path('src/vectorstore.py').read_text(encoding='utf-8'))
 print('OK  (syntax valid)')
 "
+
+echo ""
+echo "────────────────────────────────────────"
+echo " LLM Model Setup (Notebooks 04-06)"
+echo "────────────────────────────────────────"
+echo " Models are defined in config/models.json"
+echo " Three models require HF token + license acceptance:"
+echo ""
+echo "   MedGemma 4B : https://huggingface.co/google/medgemma-4b-it"
+echo "   Gemma 3 4B  : https://huggingface.co/google/gemma-3-4b-it"
+echo "   Ministral 3B: https://huggingface.co/mistralai/Ministral-3B-Instruct-2410"
+echo ""
+echo " Get a token:     https://huggingface.co/settings/tokens"
+echo " Set your token:  export HF_TOKEN=hf_your_token_here"
+echo " Or add to .env: HF_TOKEN=hf_your_token_here"
+echo "────────────────────────────────────────"

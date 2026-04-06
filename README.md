@@ -75,7 +75,7 @@ Chunks 18 textbooks -> embeds with Qwen3-Embedding-0.6B -> builds FAISS IndexFla
 
 1. Family Performance
 
-   The Qwen3 Embedding family's 8B variant ranks #6 on RTEB Healthcare with a score of 67.03(April 2026) and #1 on MTEB Multilingual (score 70.58, June 2025) among open-source models.
+   The Qwen3 Embedding family's 8B variant ranks #6 on RTEB Healthcare with a score of 67.03 (April 2026) and #1 on MTEB Multilingual (score 70.58, June 2025) among open-source models.
 
 2. GPU Budget
 
@@ -119,7 +119,7 @@ results = search("mechanism of septic shock", index, metadata, texts, model, k=5
 # each result: {rank, score, confidence, book, friendly_name, chunk_idx, text}
 ```
 
-## 6. Specialty classifier
+## 6. Specialty Classifier
 
 ### 6.1. Relevant files
 

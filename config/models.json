@@ -1,0 +1,116 @@
+{
+  "_comment": "EMMA LLM evaluation lineup. Single source of truth for all notebooks and scripts.",
+  "_benchmark": "Models selected based on Medmarks medical benchmark (tiny model category, verifiable tasks).",
+  "_backend": "HuggingFace transformers + bitsandbytes. All models loaded in 4-bit (nf4) on Colab T4.",
+  "_medmarks_ref": "https://sophont.med/blog/medmarks",
+
+  "default_model": "qwen3-4b",
+  "quantization": "4bit",
+
+  "models": [
+    {
+      "id": "qwen3-4b",
+      "hf_repo": "Qwen/Qwen3-4B",
+      "name": "Qwen3 4B (Thinking)",
+      "provider": "Alibaba",
+      "size": "4B",
+      "medmarks_rank": 33,
+      "medmarks_win_rate": 0.4918,
+      "thinking": true,
+      "thinking_note": "Pass enable_thinking=True in chat template. Thinking tokens wrapped in <think>...</think> and stripped before returning answer.",
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false
+    },
+    {
+      "id": "ministral-3b",
+      "hf_repo": "mistralai/Ministral-3B-Instruct-2410",
+      "name": "Ministral 3B",
+      "provider": "Mistral AI",
+      "size": "3B",
+      "medmarks_rank": 47,
+      "medmarks_win_rate": 0.4173,
+      "thinking": false,
+      "license": "MistralAI Research License",
+      "gated": true,
+      "hf_token_required": true,
+      "gated_note": "Requires HF token and license acceptance at huggingface.co/mistralai/Ministral-3B-Instruct-2410"
+    },
+    {
+      "id": "medgemma-4b",
+      "hf_repo": "google/medgemma-4b-it",
+      "name": "MedGemma 4B",
+      "provider": "Google",
+      "size": "4B",
+      "medmarks_rank": 51,
+      "medmarks_win_rate": 0.3586,
+      "thinking": false,
+      "license": "Health AI Developer Foundations Terms",
+      "gated": true,
+      "hf_token_required": true,
+      "gated_note": "Requires HF token and HAI-DEF terms acceptance at huggingface.co/google/medgemma-4b-it"
+    },
+    {
+      "id": "gemma3-4b",
+      "hf_repo": "google/gemma-3-4b-it",
+      "name": "Gemma 3 4B",
+      "provider": "Google",
+      "size": "4B",
+      "medmarks_rank": 55,
+      "medmarks_win_rate": 0.3202,
+      "thinking": false,
+      "license": "Gemma Terms of Use",
+      "gated": true,
+      "hf_token_required": true,
+      "gated_note": "Requires HF token and Gemma license acceptance at huggingface.co/google/gemma-3-4b-it",
+      "eval_note": "Included as baseline for MedGemma comparison — same base model, different training."
+    },
+    {
+      "id": "phi4-mini",
+      "hf_repo": "microsoft/Phi-4-mini-instruct",
+      "name": "Phi-4 Mini [3.8B]",
+      "provider": "Microsoft",
+      "size": "3.8B",
+      "medmarks_rank": null,
+      "medmarks_win_rate": null,
+      "thinking": false,
+      "license": "MIT",
+      "gated": false,
+      "hf_token_required": false,
+      "eval_note": "Not ranked in Medmarks tiny category. Included as architectural outlier — Microsoft efficiency-focused training approach differs from all others."
+    }
+  ],
+
+  "excluded_models": [
+    {
+      "id": "llama3.2-3b",
+      "name": "LLaMA 3.2 3B",
+      "provider": "Meta",
+      "reason": "Not ranked in Medmarks tiny medical benchmark. Replaced by models with empirical medical task evidence."
+    },
+    {
+      "id": "granite4-3b",
+      "name": "Granite 4 3B",
+      "provider": "IBM",
+      "reason": "Medmarks explicitly identifies Granite 4.0 as underperforming models in the weight class below it on medical tasks."
+    },
+    {
+      "id": "falcon3-3b",
+      "name": "Falcon 3 3B",
+      "provider": "Technology Innovation Institute (TII)",
+      "reason": "Not ranked in Medmarks tiny medical benchmark. No medical QA benchmark data to justify inclusion."
+    },
+    {
+      "id": "cogito-3b",
+      "name": "Cogito 3B",
+      "provider": "Deep Cogito",
+      "reason": "Performance claims unverified by independent medical benchmarks. Not ranked in Medmarks."
+    },
+    {
+      "id": "ministral-3b-reasoning",
+      "name": "Ministral 3B Reasoning",
+      "provider": "Mistral AI",
+      "reason": "Medmarks rank 50 (win rate 0.3618) — lower than Ministral 3B Instruct (rank 47, 0.4173). Instruct variant is stronger for medical QA."
+    }
+  ]
+}
