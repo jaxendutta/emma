@@ -8,43 +8,42 @@ dependencies = [
     # ── Core data science ─────────────────────────────────────────────────────
     "numpy",
     "pandas",
-    "pyarrow",          # parquet support (MedMCQA)
-    "jsonlines",        # JSONL support (MedQA)
-    "tqdm",             # progress bars
+    "pyarrow",
+    "jsonlines",
+    "tqdm",
+
     # ── ML / NLP ──────────────────────────────────────────────────────────────
-    "scikit-learn",     # classification (A1), clustering (A2)
-    "spacy",            # NER via en_core_sci_md
-    "gensim",           # topic coherence (C_v), word2vec
-    "nltk",             # PMI collocation analysis
-    # ── Embeddings & vector store ─────────────────────────────────────────────
-    "sentence-transformers",   # embeddings for RAG (e.g. PubMedBERT)
-    "faiss-cpu",               # vector similarity search (textbook index)
-    # ── LangChain (RAG pipeline + AMG-RAG integration) ────────────────────────
-    "langchain",
-    "langchain-community",
-    "langchain-ollama",        # local LLM via Ollama (replaces langchain-openai)
-    "langchain-huggingface",   # HuggingFace embeddings in LangChain
-    "langgraph",               # agentic graph reasoning (AMG-RAG)
-    "langchain-text-splitters",
-    # ── Knowledge graph (AMG-RAG MKG construction) ────────────────────────────
-    "networkx",         # in-memory knowledge graph
-    "wikipedia",        # Wikipedia evidence retrieval (AMG-RAG source)
-    # ── LLM serving ───────────────────────────────────────────────────────────
-    "ollama",           # Python client for local Ollama models
-    # ── API layer (Dialogflow webhook backend) ────────────────────────────────
+    "scikit-learn",
+    "spacy",
+    "gensim",
+    "nltk",
+
+    # ── Embeddings & retrieval ────────────────────────────────────────────────
+    "sentence-transformers",
+    "faiss-cpu",
+
+    # ── LLM inference (HuggingFace) ───────────────────────────────────────────
+    "transformers>=4.51.0",
+    "accelerate",
+    "bitsandbytes",
+
+    # ── Knowledge graph ───────────────────────────────────────────────────────
+    "networkx",
+
+    # ── API layer ─────────────────────────────────────────────────────────────
     "fastapi",
     "uvicorn",
+
     # ── Utilities ─────────────────────────────────────────────────────────────
-    "python-decouple",  # .env config (API keys, paths)
-    "requests",         # HTTP calls (PubMed API, etc.)
-    "httpx",            # async HTTP (FastAPI background tasks)
-    "python-dotenv",    # alternative .env loader
+    "requests",
+    "httpx",
+    "python-dotenv",
+
     # ── Jupyter / notebooks ───────────────────────────────────────────────────
     "jupyter",
     "ipykernel",
     "matplotlib",
     "seaborn",
-    "nbconvert>=7.17.0",
 ]
 
 [build-system]
@@ -56,7 +55,6 @@ packages = ["src"]
 
 [dependency-groups]
 dev = [
-    # ── Dev / testing ─────────────────────────────────────────────────────────
     "pytest",
-    "ruff",             # linting + formatting
+    "ruff",
 ]
