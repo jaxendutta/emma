@@ -337,7 +337,7 @@ def generate_answer(
     model,
     tokenizer,
     model_cfg: dict,
-    max_new_tokens: int = 512,
+    max_new_tokens: int = 1024,
     temperature:    float = 0.7,
 ) -> tuple[str, str]:
     """
@@ -378,6 +378,7 @@ def generate_answer(
         outputs = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
+            temperature=0.6,  # Qwen3 recommended for thinking mode
             temperature=temperature,
             do_sample=temperature > 0,
             pad_token_id=tokenizer.eos_token_id,
@@ -395,8 +396,14 @@ def generate_answer(
         think_match = re.search(r"<think>(.*?)</think>", generated, re.DOTALL)
         if think_match:
             thinking = think_match.group(1).strip()
-            # Strip thinking block from answer
-            generated = generated[think_match.end():].strip()
+            # Strip thinking block — answer is everything after </think>
+            answer = generated[think_match.end():].strip()
+        else:
+            # Thinking tokens may have been cut off by max_new_tokens.
+            # Use the full output as the answer and flag it.
+            answer = generated.strip()
+            thinking = "[thinking truncated — increase max_new_tokens]"
+        return answer, thinking
 
     return generated.strip(), thinking
 
@@ -608,6 +615,7 @@ class EMMARetriever:
         answer_text, thinking_text = generate_answer(
             prompt, self._model, self._tokenizer,
             model_cfg, max_new_tokens=max_new_tokens,
+            temperature=0.6,  # Qwen3 recommended for thinking mode
         )
         latency = time.time() - t0
 
