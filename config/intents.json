@@ -1,0 +1,28 @@
+{
+  "_comment": "Defines the handled Dialogflow intents and the RAG query templates used when a condition name is available. Add new intents here; the webhook routes them automatically without code changes.",
+  "handled_intents": [
+    "getsymptoms",
+    "getdiagnosis",
+    "gettreatment",
+    "getriskfactors",
+    "geturgency",
+    "getdifferentiation"
+  ],
+  "welcome_intents": [
+    "defaultwelcomeintent",
+    "welcome"
+  ],
+  "fallback_intents": [
+    "defaultfallbackintent",
+    "fallback"
+  ],
+  "rag_query_templates": {
+    "_comment": "f-string style templates. {condition} is replaced with the display name.",
+    "getsymptoms": "What are the clinical symptoms and presentation of {condition}?",
+    "getdiagnosis": "How is {condition} diagnosed? What tests and workup are used?",
+    "gettreatment": "What is the treatment and management of {condition}?",
+    "getriskfactors": "What are the risk factors for {condition}?",
+    "geturgency": "How urgent and life-threatening is {condition}? What are the time-critical aspects?",
+    "getdifferentiation": "How do you differentiate {condition} from similar conditions?"
+  }
+}

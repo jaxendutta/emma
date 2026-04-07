@@ -1,0 +1,60 @@
+{
+  "_comment": "Single source of truth for the 8 evaluation-domain conditions. Add a condition here and it propagates to /conditions, welcome message, and fallback prompts automatically. The static responses for new conditions go in responses.json.",
+  "conditions": {
+    "heart_attack": {
+      "name": "Myocardial Infarction",
+      "urgency": "high",
+      "mortality": "high"
+    },
+    "stroke": {
+      "name": "Stroke",
+      "urgency": "high",
+      "mortality": "high"
+    },
+    "pulmonary_embolism": {
+      "name": "Pulmonary Embolism",
+      "urgency": "high",
+      "mortality": "high"
+    },
+    "sepsis": {
+      "name": "Sepsis",
+      "urgency": "high",
+      "mortality": "high"
+    },
+    "anaphylaxis": {
+      "name": "Anaphylaxis",
+      "urgency": "high",
+      "mortality": "high"
+    },
+    "meningitis": {
+      "name": "Meningitis",
+      "urgency": "high",
+      "mortality": "high"
+    },
+    "appendicitis": {
+      "name": "Appendicitis",
+      "urgency": "high",
+      "mortality": "medium"
+    },
+    "diabetic_ketoacidosis": {
+      "name": "Diabetic Ketoacidosis",
+      "urgency": "high",
+      "mortality": "medium"
+    }
+  },
+  "aliases": {
+    "_comment": "Maps any Dialogflow entity spelling -> canonical key above.",
+    "heart_attack": "heart_attack",
+    "myocardial_infarction": "heart_attack",
+    "mi": "heart_attack",
+    "stroke": "stroke",
+    "pulmonary_embolism": "pulmonary_embolism",
+    "pe": "pulmonary_embolism",
+    "sepsis": "sepsis",
+    "anaphylaxis": "anaphylaxis",
+    "meningitis": "meningitis",
+    "appendicitis": "appendicitis",
+    "diabetic_ketoacidosis": "diabetic_ketoacidosis",
+    "dka": "diabetic_ketoacidosis"
+  }
+}
