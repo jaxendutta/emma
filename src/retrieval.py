@@ -157,16 +157,26 @@ def load_ner_model(model_name: str = "en_core_sci_md"):
 def extract_entities(text: str, nlp) -> list[str]:
     """
     Extract clinical entities using SpaCy en_core_sci_md.
-    Returns deduplicated entity strings filtered to biomedically relevant labels.
+
+    en_core_sci_md uses the BIONLP13CG schema. We filter to the labels
+    most useful for medical retrieval. If no filtered entities are found
+    (e.g. simple direct questions), falls back to all recognised entities
+    rather than returning empty — this avoids silently skipping NER.
     """
     doc  = nlp(text)
     seen = set()
-    ents = []
+    ents_filtered = []
+    ents_all      = []
+
     for ent in doc.ents:
-        if ent.label_ in ENTITY_LABELS and ent.text.lower() not in seen:
+        if ent.text.lower() not in seen:
             seen.add(ent.text.lower())
-            ents.append(ent.text)
-    return ents
+            ents_all.append(ent.text)
+            if ent.label_ in ENTITY_LABELS:
+                ents_filtered.append(ent.text)
+
+    # Prefer filtered; fall back to all recognised entities
+    return ents_filtered if ents_filtered else ents_all
 
 
 def rewrite_query(query: str, entities: list[str]) -> str:
@@ -268,18 +278,34 @@ def load_hf_model(model_cfg: dict, hf_token: str | None = None):
     )
 
     print(f"Loading {model_cfg['name']} ({hf_repo}) in 4-bit nf4...")
+
+    # Explicitly target CUDA if available — device_map="auto" can silently
+    # fall back to CPU if bitsandbytes doesn't detect the GPU correctly.
+    import torch
+    if torch.cuda.is_available():
+        print(f"  GPU: {torch.cuda.get_device_name(0)}  "
+              f"({torch.cuda.get_device_properties(0).total_memory/1024**3:.1f} GB VRAM)")
+    else:
+        print("  WARNING: No GPU detected. Inference will be very slow on CPU.")
+
     tokenizer = AutoTokenizer.from_pretrained(
         hf_repo, token=hf_token, trust_remote_code=True
     )
     model = AutoModelForCausalLM.from_pretrained(
         hf_repo,
         quantization_config=bnb_config,
-        device_map="auto",
+        device_map="cuda" if torch.cuda.is_available() else "cpu",
         token=hf_token,
         trust_remote_code=True,
     )
     model.eval()
-    print(f"  Loaded. VRAM: {_vram_used_gb():.1f} GB used")
+
+    vram = _vram_used_gb()
+    device = next(model.parameters()).device
+    print(f"  Loaded on {device}. VRAM used: {vram:.1f} GB")
+    if vram < 0.5 and torch.cuda.is_available():
+        print("  WARNING: VRAM usage looks too low — model may have loaded on CPU.")
+        print("  Try: Runtime -> Disconnect and delete runtime, then reconnect with T4 GPU.")
     return model, tokenizer
 
 
