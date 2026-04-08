@@ -480,6 +480,7 @@ class EMMARetriever:
         top_k:      int = DEFAULT_TOP_K,
         hf_token:   str | None = None,
         repo_root:  Path | None = None,
+        emb_model_name: str | None = None,
     ) -> "EMMARetriever":
         """
         Load all pre-built pipeline components from disk.
@@ -506,7 +507,7 @@ class EMMARetriever:
         index, metadata, texts = load_index_with_texts(_vs_path)
 
         print("Loading embedding model...")
-        emb_model = load_embedding_model(BIOMEDICAL_MODEL)
+        emb_model = load_embedding_model(_emb_cfg["hf_repo"])
 
         print("Loading specialty classifier...")
         clf_path = root / "models" / "classifier" / "tfidf_svm.pkl"

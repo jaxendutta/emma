@@ -546,7 +546,7 @@ def build_index(
         metadata=metadata,
         texts=texts,
         out_dir=out_dir,
-        model_name=model_name or BIOMEDICAL_MODEL,
+        embedding_model_id=model_name or BIOMEDICAL_MODEL,
     )
 
     print("\n[Vectorstore] Build complete.")
