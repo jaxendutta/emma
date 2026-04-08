@@ -46,6 +46,9 @@ dependencies = [
     "ipykernel",
     "matplotlib",
     "seaborn",
+    "accelerate>=1.13.0",
+    "en-core-sci-md",
+    "bitsandbytes>=0.49.2",
 ]
 
 [build-system]
@@ -54,6 +57,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
+
+[tool.uv.sources]
+en-core-sci-md = { url = "https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_core_sci_md-0.5.4.tar.gz" }
 
 [dependency-groups]
 dev = [
