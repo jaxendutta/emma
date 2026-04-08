@@ -35,7 +35,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Write-Host ""
     Write-Host "ERROR: uv not found." -ForegroundColor Red
     Write-Host "Install it by running:" -ForegroundColor Yellow
-    Write-Host "  powershell -c `"irm https://astral.sh/uv/install.ps1 | iex`"" -ForegroundColor Yellow
+    Write-Host "  winget install --id=astral-sh.uv  -e" -ForegroundColor Yellow
     Write-Host "Then restart PowerShell and re-run this script." -ForegroundColor Yellow
     exit 1
 }
