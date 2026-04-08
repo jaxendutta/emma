@@ -338,7 +338,7 @@ def generate_answer(
     tokenizer,
     model_cfg: dict,
     max_new_tokens: int = 1024,
-    temperature:    float = 0.7,
+    temperature:    float = 0.6,  # Qwen3 recommended for thinking mode
 ) -> tuple[str, str]:
     """
     Generate an answer from a loaded HF model.
@@ -378,7 +378,6 @@ def generate_answer(
         outputs = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
-            temperature=0.6,  # Qwen3 recommended for thinking mode
             temperature=temperature,
             do_sample=temperature > 0,
             pad_token_id=tokenizer.eos_token_id,
