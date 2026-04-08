@@ -56,11 +56,18 @@ TEXTBOOK_DIR    = REPO_ROOT / "data" / "MedQA-USMLE" / "textbooks" / "en"
 VECTORSTORE_DIR = REPO_ROOT / "models" / "vectorstore"
 
 # ── Embedding model ───────────────────────────────────────────────────────────
-# Qwen3-Embedding-0.6B: #1 open-source embedding model on MTEB (June 2025).
-# Apache 2.0, 32K token context, 1024-dim embeddings.
-# Loaded in float16 on GPU to halve VRAM usage with no meaningful quality loss.
+def _default_embedding_model() -> str:
+    """Load default embedding model HF repo from config/models.json."""
+    import json
+    cfg_path = REPO_ROOT / "config" / "models.json"
+    if cfg_path.exists():
+        cfg = json.loads(cfg_path.read_text())
+        for m in cfg.get("embeddings_models", []):
+            if m.get("default_embedding"):
+                return m["hf_repo"]
+    return "Qwen/Qwen3-Embedding-0.6B"  # fallback
 
-BIOMEDICAL_MODEL  = "Qwen/Qwen3-Embedding-0.6B"
+BIOMEDICAL_MODEL  = _default_embedding_model()
 FALLBACK_MODEL    = "all-MiniLM-L6-v2"
 
 # Instruction prefix for queries only — documents are embedded WITHOUT prefix.
@@ -332,15 +339,20 @@ def save_index_with_texts(
     index: faiss.IndexFlatIP,
     metadata: list[dict],
     texts: list[str],
-    out_dir: Path | str | None = None,
-    model_name: str = BIOMEDICAL_MODEL,
+    save_dir: Path | str | None = None,
+    embedding_model_id: str = "",
 ) -> None:
     """
     Like save_index(), but also saves chunk texts to texts.pkl
     so they don't need to be re-generated on every load.
     """
-    save_index(index, metadata, out_dir=out_dir, model_name=model_name)
-    out = Path(out_dir) if out_dir else VECTORSTORE_DIR
+    if embedding_model_id:
+        save_dir = Path(save_dir).parent / embedding_model_id
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
+    save_index(index, metadata, out_dir=save_dir, model_name=embedding_model_id)
+    out = Path(save_dir) if save_dir else VECTORSTORE_DIR
     with open(out / "texts.pkl", "wb") as f:
         pickle.dump(texts, f)
     print(f"  texts.pkl    ({len(texts):,} chunks)")

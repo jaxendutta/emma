@@ -3,10 +3,38 @@
   "_benchmark": "Models selected based on Medmarks medical benchmark (tiny model category, verifiable tasks).",
   "_backend": "HuggingFace transformers + bitsandbytes. All models loaded in 4-bit (nf4) on Colab T4.",
   "_medmarks_ref": "https://sophont.med/blog/medmarks",
-
   "default_model": "qwen3-4b",
   "quantization": "4bit",
-
+  "embeddings_models": [
+    {
+      "id": "qwen3-embeddings-0.6b",
+      "name": "Qwen 3 Embeddings 0.6B",
+      "provider": "Alibaba",
+      "hf_repo": "Qwen/Qwen3-Embedding-0.6B",
+      "size": "600M",
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false,
+      "rteb_health_mean_task_score": null,
+      "rteb_healthcare_rank": 177,
+      "embedding_dim": 1024,
+      "default_embedding": false
+    },
+    {
+      "id": "octen-embedding-0.6b",
+      "name": "Octen Embedding 0.6B",
+      "provider": "Octen",
+      "hf_repo": "octen-ai/octen-embedding-0.6b",
+      "size": "600M",
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false,
+      "rteb_health_mean_task_score": 73.79,
+      "rteb_healthcare_rank": 15,
+      "embedding_dim": 1024,
+      "default_embedding": true
+    }
+  ],
   "models": [
     {
       "id": "qwen3-4b",
@@ -22,6 +50,22 @@
       "gated": false,
       "hf_token_required": false
     },
+    {
+      "id": "qwen3-8b",
+      "hf_repo": "Qwen/Qwen3-8B",
+      "name": "Qwen3 8B (Thinking)",
+      "provider": "Alibaba",
+      "size": "8B",
+      "medmarks_rank": 29,
+      "medmarks_win_rate": 0.5024,
+      "thinking": true,
+      "thinking_note": "Pass enable_thinking=True in chat template. Thinking tokens wrapped in <tool_call>...<tool_call> and stripped before returning answer.",
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false
+    }
+  ],
+  "excluded_models": [
     {
       "id": "ministral-3b",
       "hf_repo": "mistralai/Ministral-3B-Instruct-2410",
@@ -78,10 +122,7 @@
       "gated": false,
       "hf_token_required": false,
       "eval_note": "Not ranked in Medmarks tiny category. Included as architectural outlier — Microsoft efficiency-focused training approach differs from all others."
-    }
-  ],
-
-  "excluded_models": [
+    },
     {
       "id": "llama3.2-3b",
       "name": "LLaMA 3.2 3B",

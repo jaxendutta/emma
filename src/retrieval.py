@@ -77,6 +77,19 @@ def get_model_config(model_id: str) -> dict:
         f"Available: {available}"
     )
 
+def get_embedding_config(embedding_id: str) -> dict:
+    cfg = _load_models_config()
+    for m in cfg.get("embeddings_models", []):
+        if m["id"] == embedding_id:
+            return m
+    raise ValueError(f"Embedding '{embedding_id}' not found in config/models.json.")
+
+def _default_embedding_id() -> str:
+    cfg = _load_models_config()
+    for m in cfg.get("embeddings_models", []):
+        if m.get("default_embedding"):
+            return m["id"]
+    return "qwen3-embeddings-0.6b"
 
 def get_default_model_id() -> str:
     """Return the default model id from models.json."""
@@ -488,7 +501,9 @@ class EMMARetriever:
         get_model_config(mid)
 
         print("Loading vectorstore...")
-        index, metadata, texts = load_index_with_texts(root / "models" / "vectorstore")
+        _emb_cfg = get_embedding_config(emb_model_name or _default_embedding_id())
+        _vs_path  = root / "models" / "vectorstore" / _emb_cfg["id"]
+        index, metadata, texts = load_index_with_texts(_vs_path)
 
         print("Loading embedding model...")
         emb_model = load_embedding_model(BIOMEDICAL_MODEL)
