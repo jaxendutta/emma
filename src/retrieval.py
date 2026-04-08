@@ -84,7 +84,7 @@ def get_embedding_config(embedding_id: str) -> dict:
             return m
     raise ValueError(f"Embedding '{embedding_id}' not found in config/models.json.")
 
-def _default_embedding_id() -> str:
+def get_default_embedding_id() -> str:
     cfg = _load_models_config()
     for m in cfg.get("embeddings_models", []):
         if m.get("default_embedding"):
@@ -502,7 +502,7 @@ class EMMARetriever:
         get_model_config(mid)
 
         print("Loading vectorstore...")
-        _emb_cfg = get_embedding_config(emb_model_name or _default_embedding_id())
+        _emb_cfg = get_embedding_config(emb_model_name or get_default_embedding_id())
         _vs_path  = root / "models" / "vectorstore" / _emb_cfg["id"]
         index, metadata, texts = load_index_with_texts(_vs_path)
 
