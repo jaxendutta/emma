@@ -44,8 +44,6 @@ MedQA USMLE ships with two components: the questions themselves (used for quiz m
 
 Data lives in `data/` (committed to git).
 
-# What's Done
-
 ## 4. Data loaders
 
 ### 4.1. Relevant files
@@ -200,8 +198,6 @@ Applies BERTopic to discover latent topic structure in MedQA questions. Evaluate
    This reflects the short question stem length (~20 words). BERTopic's HDBSCAN component requires sufficient text density. Outlier questions (-1 topic) fall back to specialty-only routing in the RAG pipeline, with no questions dropped.
 
 The 39 topic assignments provide finer-grained routing than specialty labels. A question in Internal Medicine that belongs to topic 0 (chest/cardiac) retrieves from cardiology-relevant textbook chunks rather than the full Internal Medicine retrieval pool.
-
-# What's Next
 
 ## 8. RAG Pipeline
 
