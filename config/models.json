@@ -8,7 +8,7 @@
   "embeddings_models": [
     {
       "id": "qwen3-embedding-0.6b",
-      "name": "Qwen 3 Embedding 0.6B",
+      "name": "Qwen 3 Embeddings 0.6B",
       "provider": "Alibaba",
       "hf_repo": "Qwen/Qwen3-Embedding-0.6B",
       "size": "600M",
@@ -39,6 +39,7 @@
     {
       "id": "qwen3-4b",
       "hf_repo": "Qwen/Qwen3-4B",
+      "ollama_tag": "qwen3:4b",
       "name": "Qwen3 4B (Thinking)",
       "provider": "Alibaba",
       "size": "4B",
@@ -53,6 +54,7 @@
     {
       "id": "qwen3-8b",
       "hf_repo": "Qwen/Qwen3-8B",
+      "ollama_tag": "qwen3:8b",
       "name": "Qwen3 8B (Thinking)",
       "provider": "Alibaba",
       "size": "8B",

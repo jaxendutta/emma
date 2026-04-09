@@ -53,6 +53,15 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("emma.api")
 
+# ── Thread pool for blocking RAG calls ────────────────────────────────────────
+# The LLM inference is synchronous. Running it directly inside an async handler
+# blocks the entire event loop. The executor lets us await it without blocking.
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="emma-rag")
+
+# Dialogflow ES hard-kills webhook calls after 5 s and shows its default response.
+# We leave 0.5 s of headroom so our handler always wins the race.
+_RAG_TIMEOUT: float = float(os.environ.get("EMMA_RAG_TIMEOUT", "4.5"))
+
 # ── Feature flag ──────────────────────────────────────────────────────────────
 
 RAG_ENABLED = os.environ.get("EMMA_USE_RAG", "false").lower() == "true"
@@ -72,14 +81,22 @@ _RAG_TIMEOUT: float | None = (
 # ── Lazy retriever (loaded once on first RAG request) ─────────────────────────
 
 _retriever = None
+_RETRIEVER_FAILED = object()  # sentinel: load was attempted and failed
+
 
 def _get_retriever():
     global _retriever
+    if _retriever is _RETRIEVER_FAILED:
+        raise RuntimeError("RAG pipeline unavailable (failed to load at startup)")
     if _retriever is None:
         from src.retrieval import EMMARetriever
         model_id = os.environ.get("EMMA_MODEL_ID") or None
-        _retriever = EMMARetriever.load(model_id=model_id)
-        logger.info("EMMARetriever loaded (model=%s)", _retriever.model_id)
+        try:
+            _retriever = EMMARetriever.load(model_id=model_id)
+            logger.info("EMMARetriever loaded (model=%s)", _retriever.model_id)
+        except Exception:
+            _retriever = _RETRIEVER_FAILED
+            raise
     return _retriever
 
 
@@ -290,9 +307,19 @@ def _rag_response_sync(query: str, think: bool = False) -> str:
         if not answer:
             raise ValueError("Empty answer from retriever")
         return answer
+    except asyncio.TimeoutError:
+        logger.warning("RAG timed out (>%.1f s) for intent=%s — using fallback",
+                       _RAG_TIMEOUT, intent_key)
     except Exception as exc:
-        logger.warning("RAG pipeline failed (%s); using static fallback", exc)
-        return "I encountered an issue retrieving an answer. Please try again."
+        logger.warning("RAG error for intent=%s: %s", intent_key, exc)
+
+    # Graceful fallback: static response if we know the condition, else apology
+    if cond_key:
+        return _static_response(intent_key, cond_key)
+    return (
+        "I'm taking a little longer than usual to look that up. "
+        "Please try asking again in a moment."
+    )
 
 
 async def _rag_response(
@@ -414,6 +441,24 @@ _WELCOME_OPENERS: list[tuple[str, str | None, str | None]] = [
 ]
 
 # ── FastAPI app ─────────────────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle events."""
+    # Startup
+    if RAG_ENABLED:
+        try:
+            retriever = _get_retriever()
+            retriever._ensure_model_loaded()
+        except Exception as exc:
+            logger.error(
+                "RAG pipeline failed to load at startup (%s); "
+                "all requests will use the static fallback.",
+                exc,
+            )
+    yield
+    # Shutdown (if needed in the future)
+
 
 app = FastAPI(
     title="EMMA API",

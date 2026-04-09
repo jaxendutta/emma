@@ -26,9 +26,8 @@ Pipeline stages
    Models are defined in config/models.json and loaded on demand.
    Qwen3 thinking mode is enabled via the chat template.
 
-Backend: HuggingFace transformers + bitsandbytes.
-All models run in 4-bit nf4 on Colab T4 (~2.5GB VRAM per model).
-No Ollama dependency.
+Backend: Ollama (preferred, if running locally) with HuggingFace transformers +
+bitsandbytes as fallback. HF models run in 4-bit nf4 on Colab T4 (~2.5GB VRAM).
 
 Usage
 -----
@@ -55,6 +54,10 @@ warnings.filterwarnings("ignore", category=FutureWarning, module=r"spacy\.")
 warnings.filterwarnings("ignore", category=FutureWarning, module=r"bitsandbytes\.")
 
 import numpy as np
+
+# Suppress known-harmless third-party warnings that clutter startup output
+warnings.filterwarnings("ignore", category=FutureWarning, module=r"spacy\.")
+warnings.filterwarnings("ignore", category=FutureWarning, module=r"bitsandbytes\.")
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
@@ -264,6 +267,52 @@ def build_prompt(
         "If a passage is marked low confidence, do not rely on it as the primary source.\n\n"
         "Answer:"
     )
+
+
+# ── Ollama inference ──────────────────────────────────────────────────────────
+
+def _ollama_available(base_url: str, model_tag: str) -> bool:
+    """Return True if Ollama is running and the model is already pulled."""
+    try:
+        import ollama as _ollama
+        client = _ollama.Client(host=base_url)
+        pulled = {m.model for m in client.list().models}
+        name = model_tag.split(":")[0]
+        return any(m == model_tag or m.startswith(name + ":") for m in pulled)
+    except Exception:
+        return False
+
+
+def generate_answer_ollama(
+    prompt:      str,
+    client,
+    model_tag:   str,
+    model_cfg:   dict,
+    temperature: float = 0.6,
+) -> tuple[str, str]:
+    """
+    Generate an answer via Ollama. Returns (answer_text, thinking_text).
+    Strips <think>…</think> blocks for Qwen3 thinking mode.
+    """
+    response  = client.chat(
+        model=model_tag,
+        messages=[{"role": "user", "content": prompt}],
+        options={"temperature": temperature},
+    )
+    generated = response.message.content.strip()
+
+    thinking = ""
+    if model_cfg.get("thinking", False):
+        think_match = re.search(r"<think>(.*?)</think>", generated, re.DOTALL)
+        if think_match:
+            thinking = think_match.group(1).strip()
+            answer   = generated[think_match.end():].strip()
+        else:
+            answer   = generated
+            thinking = "[thinking not present in Ollama response]"
+        return answer, thinking
+
+    return generated, thinking
 
 
 # ── HuggingFace inference ─────────────────────────────────────────────────────
@@ -518,15 +567,10 @@ class EMMARetriever:
         self.top_k         = top_k
         self.hf_token      = hf_token
 
-        # Lazy-loaded LLM (HuggingFace path)
+        # Lazy-loaded LLM
         self._model     = None
         self._tokenizer = None
         self._loaded_id = None
-
-        # Ollama path (preferred when available)
-        self._using_ollama   = False
-        self._ollama_client  = None
-        self._ollama_tag:    str | None = None
 
     @classmethod
     def load(
@@ -544,12 +588,17 @@ class EMMARetriever:
         hf_token is required for gated models (MedGemma, Gemma, Ministral).
         Can also be set via the HF_TOKEN environment variable.
         """
-        from dotenv import load_dotenv
-        load_dotenv()  # pick up HF_TOKEN / OLLAMA_BASE_URL from .env
-
+        import os
         from src.data import REPO_ROOT
         from src.vectorstore import BIOMEDICAL_MODEL, embed_texts, load_embedding_model, load_index_with_texts
         import pickle
+
+        # Load .env so HF_TOKEN / OLLAMA_BASE_URL are available if not already set
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except ImportError:
+            pass
 
         root     = repo_root or REPO_ROOT
         token    = hf_token or os.environ.get("HF_TOKEN")
@@ -590,17 +639,8 @@ class EMMARetriever:
         )
 
     def _ensure_model_loaded(self) -> None:
-        """
-        Load the LLM if not already loaded, or swap if model_id changed.
-
-        Tries Ollama first (zero download, fast local inference).  Falls back
-        to HuggingFace 4-bit if Ollama is unavailable or the model isn't pulled.
-        """
-        already_loaded = (
-            self._loaded_id == self.model_id
-            and (self._model is not None or self._using_ollama)
-        )
-        if already_loaded:
+        """Load the LLM if not already loaded, or swap if model_id changed."""
+        if self._loaded_id == self.model_id and self._model is not None:
             return
 
         # Unload previous HF model if any
@@ -609,27 +649,8 @@ class EMMARetriever:
             _unload_model(self._model)
             self._model     = None
             self._tokenizer = None
-
-        cfg        = get_model_config(self.model_id)
-        base_url   = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-        ollama_tag = cfg.get("ollama_tag")
-
-        if ollama_tag and _ollama_available(base_url, ollama_tag):
-            import ollama as _ollama
-            self._using_ollama  = True
-            self._ollama_client = _ollama.Client(host=base_url)
-            self._ollama_tag    = ollama_tag
-            self._loaded_id     = self.model_id
-            print(f"Using Ollama: {ollama_tag} @ {base_url}")
-            return
-
-        # Fall back to HuggingFace
-        self._using_ollama = False
-        if ollama_tag:
-            print(
-                f"Ollama model '{ollama_tag}' not available — "
-                "falling back to HuggingFace 4-bit."
-            )
+        # Load new model
+        cfg = get_model_config(self.model_id)
         self._model, self._tokenizer = load_hf_model(cfg, self.hf_token)
         self._loaded_id = self.model_id
 
@@ -718,17 +739,11 @@ class EMMARetriever:
         )
 
         t0 = time.time()
-        if self._using_ollama:
-            answer_text, thinking_text = generate_answer_ollama(
-                prompt, self._ollama_client, self._ollama_tag,
-                model_cfg, temperature=0.6, think=think,
-            )
-        else:
-            answer_text, thinking_text = generate_answer(
-                prompt, self._model, self._tokenizer,
-                model_cfg, max_new_tokens=max_new_tokens,
-                temperature=0.6,
-            )
+        answer_text, thinking_text = generate_answer(
+            prompt, self._model, self._tokenizer,
+            model_cfg, max_new_tokens=max_new_tokens,
+            temperature=0.6,  # Qwen3 recommended for thinking mode
+        )
         latency = time.time() - t0
 
         return PipelineResult(
@@ -744,6 +759,7 @@ class EMMARetriever:
                 "top_score":          chunks[0].score if chunks else None,
                 "top_confidence":     chunks[0].confidence if chunks else None,
                 "thinking_tokens":    len(thinking_text.split()) if thinking_text else 0,
+                "using_ollama":       self._using_ollama,
             },
         )
 
