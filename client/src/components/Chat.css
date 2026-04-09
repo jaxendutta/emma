@@ -1,0 +1,145 @@
+/* ── Floating toggle button ─────────────────────────────────────────────────── */
+.emma-toggle {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #2d6a4f;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(45, 106, 79, 0.35);
+  z-index: 1000;
+  transition: background 0.2s, transform 0.18s, box-shadow 0.2s;
+}
+.emma-toggle:hover { background: #40916c; transform: scale(1.06); }
+.emma-toggle.open  { background: #40916c; }
+
+/* ── Panel ──────────────────────────────────────────────────────────────────── */
+.emma-panel {
+  position: fixed;
+  bottom: 92px;
+  right: 24px;
+  width: 360px;
+  height: 520px;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 8px 36px rgba(42, 36, 32, 0.16);
+  z-index: 999;
+  transform: scale(0.94) translateY(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+  transform-origin: bottom right;
+}
+.emma-panel.open {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ── @chatscope container fills the panel ───────────────────────────────────── */
+.emma-chat-scope,
+.emma-chat-scope .cs-main-container,
+.emma-chat-scope .cs-chat-container {
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+/* ── Theme overrides ────────────────────────────────────────────────────────── */
+.emma-chat-scope {
+  --main-color: #2d6a4f;
+  --color-primary: #2d6a4f;
+  --cs-color-primary: #2d6a4f;
+  --cs-chat-container-bg: #ffffff;
+  --cs-message-list-bg: #faf8f5;
+  --cs-incoming-message-bg: #f0ebe4;
+  --cs-incoming-message-color: #2a2420;
+  --cs-outgoing-message-bg: #d8f3dc;
+  --cs-outgoing-message-color: #2a2420;
+  --cs-message-input-bg: #ffffff;
+  --cs-message-input-color: #2a2420;
+  --cs-send-button-bg: #2d6a4f;
+  --cs-typing-indicator-text-color: #6d5b4f;
+  font-family: 'Source Sans 3', system-ui, sans-serif;
+  font-size: 0.875rem;
+}
+
+/* ── Rounded message bubbles ────────────────────────────────────────────────── */
+.emma-chat-scope .cs-message__content {
+  border-radius: 12px !important;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+.emma-chat-scope .cs-message--incoming .cs-message__content {
+  border-bottom-left-radius: 4px !important;
+}
+.emma-chat-scope .cs-message--outgoing .cs-message__content {
+  border-bottom-right-radius: 4px !important;
+}
+
+/* ── Message input ──────────────────────────────────────────────────────────── */
+.emma-chat-scope .cs-message-input {
+  border-top: 1px solid #e4ddd4;
+}
+.emma-chat-scope .cs-message-input__content-editor-wrapper,
+.emma-chat-scope .cs-message-input__content-editor {
+  background: #faf8f5;
+  font-size: 0.875rem;
+  color: #2a2420;
+}
+
+/* ── Send button ────────────────────────────────────────────────────────────── */
+.emma-chat-scope .cs-button--send {
+  background: #2d6a4f;
+  color: #fff;
+  border-radius: 50%;
+}
+.emma-chat-scope .cs-button--send:hover { background: #40916c; }
+
+/* ── Typing indicator ───────────────────────────────────────────────────────── */
+.emma-chat-scope .cs-typing-indicator {
+  background: #faf8f5;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  color: #6d5b4f;
+}
+
+/* ── Custom header bar ──────────────────────────────────────────────────────── */
+.emma-chat-header {
+  background: #2d6a4f;
+  color: #fff;
+  padding: 13px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.emma-chat-header-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Lora', serif;
+  font-size: 1rem;
+}
+.emma-chat-header-name { font-weight: 600; font-size: 0.9rem; }
+.emma-chat-header-sub  { font-size: 0.72rem; opacity: 0.75; margin-top: 1px; }
+
+/* ── Hide widget on graph tab ───────────────────────────────────────────────── */
+body.tab-graph .emma-toggle,
+body.tab-graph .emma-panel { display: none; }
+
+/* ── Mobile ─────────────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .emma-panel  { width: calc(100vw - 24px); right: 12px; bottom: 80px; }
+  .emma-toggle { right: 16px; bottom: 16px; }
+}

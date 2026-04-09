@@ -1,6 +1,7 @@
 # Environment
 .venv/
 .env
+.*/*
 
 # Python
 __pycache__/
@@ -16,3 +17,7 @@ models/*/
 # OS
 .DS_Store
 Thumbs.db
+
+# Node
+node_modules/
+dist/
