@@ -132,7 +132,8 @@ def _run_rag_sync(session_id: str, query: str, think: bool = False) -> None:
         return   # evicted before RAG finished — discard result
     try:
         retriever = _get_retriever()
-        result    = retriever.answer(query, use_rag=True, think=think)
+        # CHANGED: use_rag=False forces the LLM to answer from memory
+        result    = retriever.answer(query, use_rag=False, think=think)
         answer    = result.answer.strip()
         if not answer:
             raise ValueError("Empty answer from retriever")
@@ -149,7 +150,6 @@ def _run_rag_sync(session_id: str, query: str, think: bool = False) -> None:
                 "Please try rephrasing your question."
             )
         entry.error = True
-
 
 async def _fire_rag_background(
     session_id:   str,
@@ -316,7 +316,8 @@ def _build_rag_query(intent_key: str, condition_name: str | None, raw_query: str
 
 def _rag_response_sync(query: str, think: bool = False) -> str:
     retriever = _get_retriever()
-    result    = retriever.answer(query, use_rag=True, think=think)
+    # CHANGED: use_rag=False forces the LLM to answer from memory
+    result    = retriever.answer(query, use_rag=False, think=think)
     answer    = result.answer.strip()
     if not answer:
         raise ValueError("Empty answer from retriever")
@@ -470,23 +471,146 @@ def _build_response(text: str) -> dict:
     return {"fulfillmentText": text, "fulfillmentMessages": messages}
 
 
+# ── Quiz Mode State & Helpers ─────────────────────────────────────────────────
+
+_quiz_sessions: dict[str, dict] = {}
+# Store last quiz question per session for explanation follow-up
+_last_quiz: dict[str, dict] = {}
+
+
+def _get_random_question() -> dict:
+    """
+    Returns a random question from the MedQA-USMLE US_qbank.jsonl file.
+    """
+    import os
+    import json
+    import random
+    questions_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "data", "MedQA-USMLE", "questions", "US", "US_qbank.jsonl"
+    )
+    questions = []
+    try:
+        with open(questions_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    questions.append(json.loads(line))
+    except Exception as e:
+        # Fallback to placeholder if file not found or error
+        return {
+            "question": "A patient presents to the clinic with typical acute symptoms. What is the most appropriate next step?",
+            "options": {
+                "A": "Prescribe antibiotics immediately",
+                "B": "Order an MRI",
+                "C": "Perform a physical examination",
+                "D": "Discharge with analgesics"
+            },
+            "answer": "C",
+            "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
+        }
+    if not questions:
+        return {
+            "question": "A patient presents to the clinic with typical acute symptoms. What is the most appropriate next step?",
+            "options": {
+                "A": "Prescribe antibiotics immediately",
+                "B": "Order an MRI",
+                "C": "Perform a physical examination",
+                "D": "Discharge with analgesics"
+            },
+            "answer": "C",
+            "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
+        }
+    return random.choice(questions)
+
+def _start_quiz(session_id: str, specialty: str, show_intro: bool = True) -> JSONResponse:
+    q = _get_random_question()
+    opts = "\n\n\n".join([f"{k}) {v}" for k, v in q.get("options", {}).items()])
+    letters = ", ".join(q.get("options", {}).keys())
+    if show_intro:
+        question_text = f"Quiz Time!\n\n{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
+    else:
+        question_text = f"{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
+    _quiz_sessions[session_id] = q
+    _last_quiz[session_id] = q  # Save for explanation follow-up
+    if specialty:
+        combined = "I can't filter based on a specialty yet. Here's a random question:\n\n" + question_text
+        return JSONResponse(content=_build_response(combined))
+    return JSONResponse(content=_build_response(question_text))
+
+
+# ── Quiz Answer Handler ───────────────────────────────────────────────────────
+def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
+    """
+    Handles a user's answer to a quiz question, provides feedback, and supports explanation follow-up.
+    """
+    q = _quiz_sessions.get(session_id)
+    if not q:
+        # No active quiz session; fallback
+        return JSONResponse(content=_build_response("No active quiz session. Say 'quiz' to start one!"))
+
+    options = q.get("options", {})
+    correct_letter = str(q.get("answer", "")).upper()
+    valid_letters = [k.upper() for k in options.keys()]
+    user_input_clean = user_input.strip().upper()
+
+    # Accept answers like "A", "B", "C", "D", or full option text
+    selected_letter = None
+    if user_input_clean in valid_letters:
+        selected_letter = user_input_clean
+    else:
+        # Try to match by option text (case-insensitive, partial match)
+        for k, v in options.items():
+            if user_input_clean in v.upper():
+                selected_letter = k.upper()
+                break
+
+    # Vague or invalid response handling
+    vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT"]
+    if not selected_letter or user_input_clean in vague_phrases:
+        opts = "\n\n".join([f"{k}) {v}" for k, v in options.items()])
+        letters = ", ".join(valid_letters)
+        text = (
+            f"Please reply with one of the option letters: {letters}.\n\n"
+            f"{q.get('question','')}\n\n{opts}"
+        )
+        return JSONResponse(content=_build_response(text))
+
+    # Feedback
+    correct = (selected_letter == correct_letter)
+    feedback_correct = [
+        "Correct! Well done.",
+        "That's right!",
+        "Nice job, that's the correct answer.",
+        "You got it!"
+    ]
+    feedback_incorrect = [
+        f"Incorrect. The correct answer was {correct_letter}) {options.get(correct_letter, '')}.",
+        f"Not quite. The answer is {correct_letter}) {options.get(correct_letter, '')}.",
+        f"That's not right. The correct answer: {correct_letter}) {options.get(correct_letter, '')}.",
+        f"Oops, it's actually {correct_letter}) {options.get(correct_letter, '')}."
+    ]
+    feedback = random.choice(feedback_correct if correct else feedback_incorrect)
+
+    # Save last quiz for explanation follow-up
+    _last_quiz[session_id] = q
+    # End quiz session (remove from active)
+    del _quiz_sessions[session_id]
+
+    # Set flag in session to indicate quiz follow-up
+    _sessions[session_id] = _sessions.get(session_id, {})
+    _sessions[session_id]["quiz_followup"] = True
+
+    # Prompt for explanation follow-up and offer another quiz
+    followup = "\n\nReply 'explain' if you'd like an explanation.\nWant to try another one?"
+    text = feedback + followup
+    return JSONResponse(content=_build_response(text))
+
+
 # ── Webhook ───────────────────────────────────────────────────────────────────
 
 @app.post("/webhook")
 async def dialogflow_webhook(request: Request) -> JSONResponse:
-    """
-    Dialogflow ES webhook — two-turn async RAG pattern.
-
-    Turn 1 (new question):
-      Returns acknowledgment in < 200 ms.
-      Fires RAG in a background thread, result stored in _pending[session_id].
-
-    Turn 2 (any follow-up message):
-      Checks _pending[session_id].
-      - Answer ready   -> delivers RAG answer, cleans up pending entry.
-      - Still running  -> "still working, send another message soon".
-      - No entry       -> routes normally via intent matching.
-    """
     try:
         body: dict[str, Any] = await request.json()
     except Exception:
@@ -498,90 +622,164 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     raw_query: str     = query_result.get("queryText", "")
     session_id: str    = body.get("session", "unknown")
 
-    intent_key   = intent_name.lower().replace(" ", "").replace("_", "")
-    cond_key     = _condition_key_from_entity(parameters)
-    cond_display = _extract_condition(parameters)
-    session      = _session_get(session_id)
+    logger.info("Webhook Request | intent=%s | query=%r", intent_name, raw_query[:80])
 
-    logger.info("Webhook | intent=%s | cond=%s | pending=%s | query=%r",
-                intent_key, cond_key, session_id in _pending, raw_query[:80])
 
-    # ── Priority 0: deliver a pending RAG result ─────────────────────────────
-    # Fires on ANY incoming message if a background job is registered for this
-    # session — intent matching is irrelevant when the user is waiting for RAG.
+    # 1. QUIZ INTERCEPTORS
+    if session_id in _quiz_sessions:
+        return _handle_quiz_answer(session_id, raw_query)
 
+    query_lower = raw_query.lower().strip()
+
+    # Check for quiz follow-up flag and affirmative response
+    session = _sessions.get(session_id, {})
+    quiz_followup = session.get("quiz_followup")
+    affirmative = query_lower in {"yes", "sure", "ok", "okay", "yup", "yep", "yeah", "y", "please", "another", "next", "go", "go ahead", "let's go", "let's do it"}
+    if quiz_followup and affirmative:
+        # Remove the flag and start a new quiz
+        _sessions[session_id]["quiz_followup"] = False
+        return _start_quiz(session_id, "general", show_intro=False)
+
+    if "quiz" in query_lower:
+        show_intro = not quiz_followup
+        # If this is a quiz follow-up, clear the flag
+        if quiz_followup:
+            _sessions[session_id]["quiz_followup"] = False
+        if "on" in query_lower:
+            return _start_quiz(session_id, "specialty", show_intro=show_intro)
+        return _start_quiz(session_id, None, show_intro=show_intro)
+
+    # 2. PENDING RAG INTERCEPTOR
     if session_id in _pending:
         entry = _pending[session_id]
         if entry.answer is not None:
             answer = entry.answer
             del _pending[session_id]
-            _session_set(session_id, entry.intent_key, entry.cond_key,
-                         entry.cond_display, entry.query)
-            logger.info("Delivering pending RAG result for session=%s", session_id)
+            _session_set(session_id, entry.intent_key, entry.cond_key, entry.cond_display, entry.query)
             return JSONResponse(content=_build_response(answer))
         else:
-            elapsed = _time.time() - entry.started_at
-            logger.info("RAG still running for session=%s (%.1f s)", session_id, elapsed)
             return JSONResponse(content=_build_response(
                 "Still looking that up — just a few more seconds. "
                 "Send me any message again when you're ready! ⏳"
             ))
 
-    # ── Standard intent routing ───────────────────────────────────────────────
+    # 3. INTENT & CONDITION PARSING
+    intent_key = intent_name.lower().replace(" ","").replace("_","")
+    cond_key   = _condition_key_from_entity(parameters)
 
+
+    # Quiz explanation follow-up: support 'explain', 'explain answer', and 'explain why the answer is X'
+    quiz_explain_prefix = "explain why the answer is "
+    if query_lower in ("explain", "explain answer"):
+        last_quiz = _last_quiz.get(session_id)
+        if last_quiz:
+            letter = str(last_quiz.get("answer", "")).upper()
+            options = last_quiz.get("options", {})
+            option_text = options.get(letter, "")
+            question = last_quiz.get("question", "")
+            prompt = (
+                f"Question: {question}\n"
+                f"Options: " + ", ".join([f"{k}) {v}" for k, v in options.items()]) + "\n"
+                f"Correct answer: {letter}) {option_text}\n"
+                f"Explain why this is correct and the others are not."
+            )
+            if RAG_ENABLED:
+                answer = await _rag_response("quizexplanation", prompt)
+            else:
+                answer = "RAG is disabled. Enable EMMA_USE_RAG to get explanations."
+            return JSONResponse(content=_build_response(answer))
+        else:
+            return JSONResponse(content=_build_response("Sorry, I couldn't find the last quiz question to explain."))
+    elif query_lower.startswith(quiz_explain_prefix):
+        letter = query_lower[len(quiz_explain_prefix):].strip().upper()[:1]
+        last_quiz = _last_quiz.get(session_id)
+        if last_quiz and letter in last_quiz.get("options", {}):
+            question = last_quiz.get("question", "")
+            options = last_quiz.get("options", {})
+            option_text = options.get(letter, "")
+            prompt = (
+                f"Question: {question}\n"
+                f"Options: " + ", ".join([f"{k}) {v}" for k, v in options.items()]) + "\n"
+                f"Correct answer: {letter}) {option_text}\n"
+                f"Explain why this is correct and the others are not."
+            )
+            if RAG_ENABLED:
+                answer = await _rag_response("quizexplanation", prompt)
+            else:
+                answer = "RAG is disabled. Enable EMMA_USE_RAG to get explanations."
+            return JSONResponse(content=_build_response(answer))
+        else:
+            return JSONResponse(content=_build_response("Sorry, I couldn't find the last quiz question to explain."))
+
+    if not cond_key and raw_query:
+        cond_key = _extract_condition_from_text(raw_query)
+
+    session = _session_get(session_id)
+
+    # 4. CONTEXT RESOLUTION (Fixes Fracture vs 'Tell me')
+    _VAGUE_PHRASES = ["yes", "sure", "ok", "okay", "tell me", "explain", "go on", "what else", "please", "more", "you tell me", "idk", "i don't know"]
+    is_vague = any(query_lower == p or query_lower.startswith(p) for p in _VAGUE_PHRASES) or len(query_lower.split()) <= 3
+
+    if not cond_key:
+        if is_vague and session and session.get("cond_key"):
+            # They said "tell me more" -> inherit previous condition
+            cond_key = session.get("cond_key")
+            intent_key = session.get("intent_key", intent_key)
+        elif not is_vague and raw_query and not RAG_ENABLED:
+            # They asked a full question about an unknown condition (e.g., fracture) while in static mode
+            intent_key = "unsupported_condition"
+
+    # Guess intent if Dialogflow sent a fallback
+    FALLBACK_INTENTS = set(_get_intents_cfg().get("fallback_intents", ["defaultfallbackintent", "fallback"]))
+    if not intent_key or intent_key in FALLBACK_INTENTS or intent_key == "general":
+        guessed_intent = _detect_intent_from_text(raw_query)
+        if guessed_intent != "general":
+            intent_key = guessed_intent
+        elif cond_key:
+            intent_key = "getsymptoms" 
+
+    cond_display = _extract_condition(parameters)
+    if cond_key and not cond_display:
+        cond_display = _CONDITION_META().get(cond_key, {}).get("name")
+
+    # 5. ROUTING
     HANDLED_INTENTS  = set(_get_intents_cfg().get("handled_intents", [
         "getsymptoms", "getdiagnosis", "gettreatment",
         "getriskfactors", "geturgency", "getdifferentiation",
     ]))
-    WELCOME_INTENTS  = set(_get_intents_cfg().get("welcome_intents",
-                           ["defaultwelcomeintent", "welcome"]))
-    FALLBACK_INTENTS = set(_get_intents_cfg().get("fallback_intents",
-                           ["defaultfallbackintent", "fallback"]))
+    WELCOME_INTENTS  = set(_get_intents_cfg().get("welcome_intents", ["defaultwelcomeintent", "welcome"]))
 
-    # Inherit context from session for follow-ups
-    is_session_followup = (
-        cond_key is None and intent_key in FALLBACK_INTENTS and session
-    )
-    if is_session_followup:
-        cond_key     = session.get("cond_key")
-        cond_display = session.get("cond_display")
-        if cond_key:
-            intent_key = session.get("intent_key", intent_key)
+    if intent_key == "unsupported_condition":
+        cond_list = " · ".join(m["name"] for m in _CONDITION_META().values())
+        answer = ("I can currently give detailed answers about these eight acute emergency "
+                  "conditions:\n\n" + cond_list + "\n\nAsk me about any of these!")
+        return JSONResponse(content=_build_response(answer))
 
-    if intent_key in HANDLED_INTENTS:
-
+    elif intent_key in HANDLED_INTENTS:
         if RAG_ENABLED:
             if cond_key is not None:
                 rag_query = _build_rag_query(intent_key, cond_display, raw_query)
-            elif raw_query:
-                rag_query = raw_query
             else:
-                return JSONResponse(content=_build_response(
-                    "What condition would you like to know about?"))
-
+                rag_query = raw_query
+            
             await _fire_rag_background(
                 session_id=session_id, query=rag_query,
                 intent_key=intent_key, cond_key=cond_key, cond_display=cond_display,
-                think=False,   # CoT irrelevant for Messenger UX and adds latency
+                think=False,
             )
             label = cond_display or "that"
             return JSONResponse(content=_build_response(
                 f"Looking up {label} in the medical textbooks… "
                 "Send me any message in a moment and I'll have your answer ready! 📚"
             ))
-
         else:
-            # RAG disabled — static only
             if cond_key is not None:
                 answer = _static_response(intent_key, cond_key)
-            elif raw_query:
-                cond_list = " · ".join(m["name"] for m in _CONDITION_META().values())
-                answer = (
-                    "I can give detailed answers about eight acute emergency "
-                    "conditions:\n\n" + cond_list + "\n\nAsk me about any of these!"
-                )
             else:
                 answer = "What condition would you like to know about?"
+            
+            _session_set(session_id, intent_key, cond_key, cond_display, raw_query)
+            return JSONResponse(content=_build_response(answer))
 
     elif intent_key in WELCOME_INTENTS:
         opener_text, opener_cond, opener_intent = random.choice(_WELCOME_OPENERS)
@@ -590,80 +788,15 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             _session_set(session_id, opener_intent, opener_cond, opener_display, opener_text)
         return JSONResponse(content=_build_response(opener_text))
 
-    elif intent_key in FALLBACK_INTENTS:
-        query_lower = raw_query.lower().strip()
-        _FOLLOWUP_PATTERNS = (
-            "i don", "don't know", "no idea", "not sure", "what is it",
-            "what are they", "tell me", "explain", "go on", "what's the answer",
-            "show me", "what about", "and", "yes", "sure", "ok", "okay", "please",
-        )
-        is_vague = (
-            any(query_lower.startswith(p) or p in query_lower for p in _FOLLOWUP_PATTERNS)
-            and len(query_lower.split()) <= 6
-        )
-
-        if (is_session_followup or is_vague) and session:
-            prev_intent  = session.get("intent_key", "getsymptoms")
-            prev_cond    = session.get("cond_key")
-            prev_display = session.get("cond_display")
-            if prev_cond and prev_display:
-                if RAG_ENABLED:
-                    await _fire_rag_background(
-                        session_id=session_id,
-                        query=_build_rag_query(prev_intent, prev_display, ""),
-                        intent_key=prev_intent, cond_key=prev_cond,
-                        cond_display=prev_display,
-                    )
-                    return JSONResponse(content=_build_response(
-                        f"Looking up {prev_display} in the medical textbooks… "
-                        "Send me any message in a moment! 📚"
-                    ))
-                else:
-                    answer = _static_response(prev_intent, prev_cond)
-            else:
-                answer = "What condition would you like to know about?"
-
-        elif RAG_ENABLED and raw_query:
-            await _fire_rag_background(
-                session_id=session_id, query=raw_query,
-                intent_key="fallback", cond_key=None, cond_display=None,
-            )
-            return JSONResponse(content=_build_response(
-                "Looking that up in the medical textbooks… "
-                "Send me any message in a moment and I'll have your answer! 📚"
-            ))
-        else:
-            answer = (
-                "I'm not sure I understood that. I can help with:\n"
-                "• Symptoms of a condition\n"
-                "• How a condition is diagnosed\n"
-                "• Treatment and management\n"
-                "• Risk factors\n"
-                "• How urgent a condition is\n"
-                "• Differentiating between similar conditions\n\n"
-                "Try: 'What are the symptoms of sepsis?' or "
-                "'How is a pulmonary embolism treated?'"
-            )
-
     else:
-        if RAG_ENABLED and raw_query:
-            await _fire_rag_background(
-                session_id=session_id, query=raw_query,
-                intent_key="unknown", cond_key=None, cond_display=None,
-            )
-            return JSONResponse(content=_build_response(
-                "Looking that up… send me any message in a moment! 📚"
-            ))
-        else:
-            answer = (
-                "I received your question but I'm not sure how to help. "
-                "Ask me about symptoms, diagnosis, treatment, risk factors, urgency, "
-                "or differentiation for any medical condition."
-            )
-
-    _session_set(session_id, intent_key, cond_key, cond_display, raw_query)
-    return JSONResponse(content=_build_response(answer))
-
+        answer = (
+            "I'm not sure I understood that. I can help with:\n"
+            "• Symptoms of a condition\n"
+            "• How a condition is diagnosed\n"
+            "• Treatment and management\n\n"
+            "Try: 'What are the symptoms of sepsis?'"
+        )
+        return JSONResponse(content=_build_response(answer))
 
 # ── Direct query endpoint ─────────────────────────────────────────────────────
 

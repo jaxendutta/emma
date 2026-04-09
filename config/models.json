@@ -3,9 +3,23 @@
   "_benchmark": "Models selected based on Medmarks medical benchmark (tiny model category, verifiable tasks).",
   "_backend": "Ollama-first, HuggingFace 4-bit nf4 fallback. ollama_tag drives Ollama; hf_repo drives HF.",
   "_medmarks_ref": "https://sophont.med/blog/medmarks",
-  "default_model": "qwen3-4b",
+  "default_model": "qwen3.5-2b",
   "quantization": "4bit",
   "embeddings_models": [
+    {
+      "id": "all-MiniLM-L12-v2",
+      "name": "all-MiniLM-L12-v2",
+      "provider": "Hugging Face",
+      "hf_repo": "sentence-transformers/all-MiniLM-L12-v2",
+      "size": "33M",
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false,
+      "rteb_health_mean_task_score": null,
+      "rteb_healthcare_rank": null,
+      "embedding_dim": 384,
+      "default_embedding": false
+    },
     {
       "id": "qwen3-embedding-0.6b",
       "name": "Qwen 3 Embedding 0.6B",
@@ -44,6 +58,38 @@
       "name": "Qwen3 4B (Thinking)",
       "provider": "Alibaba",
       "size": "4B",
+      "medmarks_rank": null,
+      "medmarks_win_rate": null,
+      "thinking": true,
+      "thinking_note": "HF: pass enable_thinking=True in chat template. Ollama: pass think=True in payload. Thinking tokens wrapped in <tool_call>...<tool_call> and stripped before returning answer.",
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false
+    },
+    {
+      "id": "qwen3.5-2b",
+      "hf_repo": "Qwen/Qwen3.5-2B",
+      "ollama_tag": "qwen3.5:2b",
+      "name": "Qwen3.5 2B",
+      "provider": "Alibaba",
+      "size": "2B",
+      "medmarks_rank": null,
+      "medmarks_win_rate": null,
+      "thinking": true,
+      "thinking_note": "HF: pass enable_thinking=True in chat template. Ollama: pass think=True in payload. Thinking tokens wrapped in <tool_call>...<tool_call> and stripped before returning answer.",
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false
+    }
+  ],
+  "excluded_models": [
+    {
+      "id": "qwen3-4b-thinking-2507",
+      "hf_repo": "Qwen/Qwen3-4B-Thinking-2507",
+      "ollama_tag": "qwen3:4b-thinking-2507-q4_K_M",
+      "name": "Qwen3 4B Thinking 2507",
+      "provider": "Alibaba",
+      "size": "4B",
       "medmarks_rank": 33,
       "medmarks_win_rate": 0.4918,
       "thinking": true,
@@ -51,9 +97,7 @@
       "license": "Apache 2.0",
       "gated": false,
       "hf_token_required": false
-    }
-  ],
-  "excluded_models": [
+    },
     {
       "id": "qwen3-8b",
       "hf_repo": "Qwen/Qwen3-8B",

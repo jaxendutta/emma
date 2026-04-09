@@ -2,7 +2,7 @@
   "_comment": "Ablation grid: embedding x LLM x RAG condition. Auto-updated by notebook 06.",
   "grid": {
     "embedding_models": ["qwen3-embedding-0.6b", "octen-embedding-0.6b"],
-    "llm_models":       ["qwen3-4b", "qwen3-8b"],
+    "llm_models":       ["qwen3-4b", "qwen3-4b-thinking-2507"],
     "rag_conditions":   [true, false]
   },
   "runs": [
@@ -12,7 +12,7 @@
       "llm":            "qwen3-4b",
       "rag":            false,
       "n_eval":         50,
-      "accuracy":       0.42,
+      "accuracy":       42.0,
       "mean_top_score": null,
       "status":         "complete",
       "timestamp":      "2026-04-07",
@@ -24,11 +24,59 @@
       "llm":            "qwen3-4b",
       "rag":            true,
       "n_eval":         50,
-      "accuracy":       0.38,
-      "mean_top_score": 0.648,
+      "accuracy":       38.0,
+      "mean_top_score": 64.8,
       "status":         "complete",
       "timestamp":      "2026-04-07",
       "notes":          "Notebook 04 pilot run"
+    },
+    {
+      "id":             "octen-embedding-0.6b__qwen3-4b-thinking-2507__rag",
+      "embedding":      "octen-embedding-0.6b",
+      "llm":            "qwen3-4b-thinking-2507",
+      "rag":            true,
+      "n_eval":         100,
+      "accuracy":       44.0,
+      "mean_top_score": 65.77,
+      "status":         "complete",
+      "timestamp":      "2026-04-09",
+      "notes":          "Notebook 06 ablation grid"
+    },
+    {
+      "id":             "octen-embedding-0.6b__qwen3-4b-thinking-2507__no-rag",
+      "embedding":      "octen-embedding-0.6b",
+      "llm":            "qwen3-4b-thinking-2507",
+      "rag":            false,
+      "n_eval":         100,
+      "accuracy":       33.0,
+      "mean_top_score": null,
+      "status":         "complete",
+      "timestamp":      "2026-04-09",
+      "notes":          "Notebook 06 ablation grid"
+    },
+    {
+      "id":             "qwen3-embedding-0.6b__qwen3-4b-thinking-2507__rag",
+      "embedding":      "qwen3-embedding-0.6b",
+      "llm":            "qwen3-4b-thinking-2507",
+      "rag":            true
+      "n_eval":         100,
+      "accuracy":       32.0,
+      "mean_top_score": 65.07,
+      "status":         "complete",
+      "timestamp":      "2026-04-09",
+      "notes":          "Notebook 06 ablation grid"
+    },
+    {
+      "id":             "qwen3-embedding-0.6b__qwen3-4b-thinking-2507__no-rag",
+      "embedding":      "qwen3-embedding-0.6b",
+      "llm":            "qwen3-4b-thinking-2507",
+      "rag":            false,
+      "n_eval":         100,
+      "accuracy":       31.0,
+      "mean_top_score": null,
+      "status":         "complete",
+      "timestamp":      "2026-04-09",
+      "notes":          "Notebook 06 ablation grid"
     }
   ]
 }

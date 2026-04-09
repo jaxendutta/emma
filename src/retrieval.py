@@ -322,7 +322,16 @@ def generate_answer_ollama(
     # Ollama chat payload
     payload = {
         "model": tag,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are EMMA, an Emergency Medicine Mentoring Agent. You chat with medical students via text message. CRITICAL RULES: 1. Keep it brief: Never write more than 2 or 3 short sentences. 2. No Markdown: Do not use asterisks, bolding, bullet points, or headers. Use plain text only. 3. Get straight to the point: Never use introductory filler. 4. Stick to the prompt."
+            },
+            {
+                "role": "user", 
+                "content": prompt
+            }
+        ],
         "stream": False,
         "options": {
             "temperature": 0.6 if is_thinking else 0.7,
@@ -334,15 +343,15 @@ def generate_answer_ollama(
     if is_thinking:
         payload["think"] = True
 
-    r = requests.post(f"{base_url}/api/chat", json=payload, timeout=30)
+    r = requests.post(f"{base_url}/api/chat", json=payload, timeout=120)
     r.raise_for_status()
 
     generated = r.json()["message"]["content"].strip()
 
-    # Strip <think>...</think> block if present (Qwen3 with thinking=True)
+    # Strip <tool_call>...<tool_call> block if present (Qwen3 with thinking=True)
     thinking = ""
     if is_thinking:
-        think_match = re.search(r"<think>(.*?)</think>", generated, re.DOTALL)
+        think_match = re.search(r"<tool_call>(.*?)</tool_call>", generated, re.DOTALL)
         if think_match:
             thinking  = think_match.group(1).strip()
             generated = generated[think_match.end():].strip()
