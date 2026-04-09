@@ -285,15 +285,21 @@ def generate_answer_ollama(
     model_tag:   str,
     model_cfg:   dict,
     temperature: float = 0.6,
+    think:       bool  = False,
 ) -> tuple[str, str]:
     """
     Generate an answer via Ollama. Returns (answer_text, thinking_text).
-    Strips <think>…</think> blocks for Qwen3 thinking mode.
+
+    think=False (default) disables Qwen3's chain-of-thought mode, which
+    can add 500-2000 extra tokens before the real answer and makes CPU
+    inference 10-100x slower.  Set think=True only when latency is not
+    a constraint (e.g. the /query endpoint on a GPU machine).
     """
-    response  = client.chat(
+    response = client.chat(
         model=model_tag,
         messages=[{"role": "user", "content": prompt}],
         options={"temperature": temperature},
+        think=think,
     )
     generated = response.message.content.strip()
 
@@ -686,6 +692,7 @@ class EMMARetriever:
         use_rag:        bool = True,
         min_confidence: str  = MIN_CONFIDENCE,
         max_new_tokens: int  = 512,
+        think:          bool = False,
     ) -> PipelineResult:
         """
         Full RAG pipeline: NER -> retrieve -> prompt -> LLM.
@@ -696,6 +703,10 @@ class EMMARetriever:
         use_rag        : if False, skip retrieval (baseline condition)
         min_confidence : minimum confidence level for retrieved chunks
         max_new_tokens : maximum tokens to generate
+        think          : enable Qwen3 chain-of-thought (Ollama only).
+                         Default False — thinking mode adds 500-2000 extra
+                         tokens and is too slow for real-time webhook use.
+                         Set True for notebook/evaluation runs on GPU.
         """
         self._ensure_model_loaded()
         model_cfg = get_model_config(self.model_id)
@@ -721,7 +732,7 @@ class EMMARetriever:
         if self._using_ollama:
             answer_text, thinking_text = generate_answer_ollama(
                 prompt, self._ollama_client, self._ollama_tag,
-                model_cfg, temperature=0.6,
+                model_cfg, temperature=0.6, think=think,
             )
         else:
             answer_text, thinking_text = generate_answer(

@@ -60,6 +60,10 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="emma-rag")
 
 # Dialogflow ES hard-kills webhook calls after 5 s and shows its default response.
 # We leave 0.5 s of headroom so our handler always wins the race.
+# Dialogflow ES hard-kills webhook calls after 5 s.  We leave 0.5 s for ngrok
+# RTT overhead so our handler always beats the deadline. With think=False this
+# is achievable on GPU; CPU users will still see the static fallback for heavy
+# queries.  Override via EMMA_RAG_TIMEOUT env var.
 _RAG_TIMEOUT: float = float(os.environ.get("EMMA_RAG_TIMEOUT", "4.5"))
 
 # ── Feature flag ──────────────────────────────────────────────────────────────
@@ -266,40 +270,89 @@ def _static_response(intent_key: str, cond_key: str) -> str:
     )
 
 
+# ── Free-text intent + entity detection (used by /chat, bypasses Dialogflow) ─
+
+# Ordered so longer/more-specific phrases win over short keywords.
+_INTENT_PATTERNS: list[tuple[str, list[str]]] = [
+    ("getdifferentiation", ["differ", "distinguish", " vs ", "versus", "compare", "contrast", "tell apart", "not the same as"]),
+    ("geturgency",         ["urgent", "emergenc", "how serious", "how fast", "time-critical", "time sensitive", "fatal", "mortalit", "life-threatening", "how quickly", "how dangerous"]),
+    ("getriskfactors",     ["risk factor", "risk", "predispos", "who gets", "who is at risk", "susceptible", "prone to"]),
+    ("getdiagnosis",       ["diagnos", "how is it found", "how do you detect", "test for", "workup", "blood test", "imaging", "confirm", "identify", "ct scan", "mri", "xray", "x-ray"]),
+    ("gettreatment",       ["treat", "manag", "therap", "cure", "medic", "drug", "antibiotic", "prescri", "intervention", "surgery", "how do you fix", "how to fix"]),
+    ("getsymptoms",        ["symptom", "sign of", "present", "manifest", "feel like", "clinical feature", "how does it feel", "what does it feel"]),
+]
+
+def _detect_intent_from_text(text: str) -> str:
+    """Return the best-matching intent key for a free-text message, or 'general'."""
+    t = text.lower()
+    for intent_key, patterns in _INTENT_PATTERNS:
+        if any(p in t for p in patterns):
+            return intent_key
+    return "general"
+
+
+def _extract_condition_from_text(text: str) -> str | None:
+    """
+    Scan free text for a known condition alias.
+    Longer aliases are checked first to avoid short ones (e.g. 'mi', 'pe')
+    matching inside unrelated words.
+    """
+    t = text.lower()
+    aliases = _CONDITION_ALIASES()
+    for alias in sorted(aliases, key=len, reverse=True):
+        term = alias.replace("_", " ")
+        if len(term) <= 3:
+            # Short abbreviations: require word boundary
+            if re.search(r"(?<![a-z])" + re.escape(term) + r"(?![a-z])", t):
+                return aliases[alias]
+        elif term in t:
+            return aliases[alias]
+    return None
+
+
 # ── RAG response builder ─────────────────────────────────────────────────────
 
-def _rag_response_sync(query: str) -> str:
+def _rag_response_sync(query: str, think: bool = False) -> str:
     """Blocking RAG call — must run in a thread, never directly in the event loop."""
     retriever = _get_retriever()
-    result    = retriever.answer(query, use_rag=True)
+    result    = retriever.answer(query, use_rag=True, think=think)
     answer    = result.answer.strip()
     if not answer:
         raise ValueError("Empty answer from retriever")
     return answer
 
 
-async def _rag_response(intent_key: str, query: str,
-                         cond_key: str | None = None) -> str:
+async def _rag_response(
+    intent_key: str,
+    query:      str,
+    cond_key:   str | None = None,
+    think:      bool       = False,
+    timeout:    float | None = None,
+) -> str:
     """
     Async wrapper around the blocking RAG pipeline.
 
     Runs inference in a thread pool so the event loop stays free.
-    Enforces _RAG_TIMEOUT (default 4.5 s) so Dialogflow's 5-second hard
-    deadline is never hit.  On timeout or error, falls back to the static
-    canned response when the condition is in the ontology, or a short
-    apology otherwise.
+
+    timeout — seconds before giving up.  None = wait indefinitely
+              (used by /query which has no Dialogflow deadline).
+              Defaults to _RAG_TIMEOUT (4.5 s) for the /webhook path.
+
+    think   — enable Qwen3 chain-of-thought (Ollama).  Always False
+              for /webhook (too slow); callers can set True for /query.
     """
     loop = asyncio.get_event_loop()
+    fut  = loop.run_in_executor(_executor, _rag_response_sync, query, think)
     try:
-        answer = await asyncio.wait_for(
-            loop.run_in_executor(_executor, _rag_response_sync, query),
-            timeout=_RAG_TIMEOUT,
-        )
+        if timeout is not None:
+            answer = await asyncio.wait_for(fut, timeout=timeout)
+        else:
+            answer = await fut
         logger.info("RAG OK | intent=%s | len=%d", intent_key, len(answer))
         return answer
     except asyncio.TimeoutError:
         logger.warning("RAG timed out (>%.1f s) for intent=%s — using fallback",
-                       _RAG_TIMEOUT, intent_key)
+                       timeout, intent_key)
     except Exception as exc:
         logger.warning("RAG error for intent=%s: %s", intent_key, exc)
 
@@ -525,7 +578,8 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             # Condition is in the ontology evaluation domain.
             if RAG_ENABLED:
                 rag_query = _build_rag_query(intent_key, cond_display, raw_query)
-                answer = await _rag_response(intent_key, rag_query, cond_key)
+                answer = await _rag_response(intent_key, rag_query, cond_key,
+                                             timeout=_RAG_TIMEOUT)
             else:
                 answer = _static_response(intent_key, cond_key)
 
@@ -537,7 +591,8 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             # Without RAG: we only have static responses for the 8 conditions,
             # so we tell the user that honestly rather than pretending otherwise.
             if RAG_ENABLED and raw_query:
-                answer = await _rag_response(intent_key, raw_query)
+                answer = await _rag_response(intent_key, raw_query,
+                                             timeout=_RAG_TIMEOUT)
             elif raw_query:
                 cond_list = " · ".join(
                     meta["name"] for meta in _CONDITION_META().values()
@@ -582,13 +637,15 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             if prev_cond and prev_display:
                 rag_q = _build_rag_query(prev_intent, prev_display, "")
                 if RAG_ENABLED:
-                    answer = await _rag_response(prev_intent, rag_q, prev_cond)
+                    answer = await _rag_response(prev_intent, rag_q, prev_cond,
+                                                 timeout=_RAG_TIMEOUT)
                 else:
                     answer = _static_response(prev_intent, prev_cond)
             else:
                 answer = "What condition would you like to know about?"
         elif RAG_ENABLED and raw_query:
-            answer = await _rag_response("fallback", raw_query)
+            answer = await _rag_response("fallback", raw_query,
+                                         timeout=_RAG_TIMEOUT)
         else:
             answer = (
                 "I'm not sure I understood that. I can help with:\n"
@@ -605,7 +662,8 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     else:
         # Unknown intent -- try RAG on the raw query, else graceful fallback.
         if RAG_ENABLED and raw_query:
-            answer = await _rag_response("unknown", raw_query)
+            answer = await _rag_response("unknown", raw_query,
+                                         timeout=_RAG_TIMEOUT)
         else:
             answer = (
                 "I received your question but I'm not sure how to help. "
@@ -629,11 +687,15 @@ async def direct_query(request: Request) -> JSONResponse:
     Direct query endpoint -- bypasses Dialogflow intent routing.
     Useful for testing the RAG pipeline from curl or a test script.
 
-    Body: { "query": "What is the treatment for anaphylaxis?" }
+    Body: { "query": "What is the treatment for anaphylaxis?", "think": false }
+
+    think defaults to False (fast).  Set true on GPU for richer answers.
+    No timeout is applied here — the caller is responsible for waiting.
     """
     try:
-        body = await request.json()
+        body  = await request.json()
         query = body.get("query", "").strip()
+        think = bool(body.get("think", False))
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
@@ -641,7 +703,8 @@ async def direct_query(request: Request) -> JSONResponse:
         raise HTTPException(status_code=422, detail="'query' field is required")
 
     if RAG_ENABLED:
-        answer = await _rag_response("direct", query)
+        # No timeout — /query has no Dialogflow deadline
+        answer = await _rag_response("direct", query, think=think, timeout=None)
     else:
         answer = (
             "RAG pipeline is not enabled. Set EMMA_USE_RAG=true and ensure "
