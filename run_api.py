@@ -5,7 +5,7 @@ Usage
 -----
     uv run python run_api.py                        # static knowledge only
     uv run python run_api.py --rag                  # enable RAG pipeline
-    uv run python run_api.py --rag --model gemma3:4b
+    uv run python run_api.py --rag --model qwen3-4b
     uv run python run_api.py --port 9000
     uv run python run_api.py --rag --no-reload      # production-style (no auto-reload)
 
@@ -43,7 +43,7 @@ def parse_args():
             "examples:\n"
             "  uv run python run_api.py\n"
             "  uv run python run_api.py --rag\n"
-            "  uv run python run_api.py --rag --model qwen3:4b\n"
+            "  uv run python run_api.py --rag --model qwen3-4b\n"
             "  uv run python run_api.py --rag --port 9000 --no-reload"
         ),
     )

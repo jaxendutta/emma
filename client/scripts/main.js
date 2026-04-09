@@ -58,7 +58,7 @@ window.addEventListener('DOMContentLoaded', function () {
 // ── README loader ─────────────────────────────────────────────────────────────
 async function loadReadme() {
     try {
-        const res = await fetch('./README.md');
+        const res = await fetch('../README.md');
         if (!res.ok) throw new Error('Not found');
         const text = await res.text();
 

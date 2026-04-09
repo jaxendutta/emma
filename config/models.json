@@ -1,7 +1,7 @@
 {
   "_comment": "EMMA LLM evaluation lineup. Single source of truth for all notebooks and scripts.",
   "_benchmark": "Models selected based on Medmarks medical benchmark (tiny model category, verifiable tasks).",
-  "_backend": "HuggingFace transformers + bitsandbytes. All models loaded in 4-bit (nf4) on Colab T4.",
+  "_backend": "Ollama-first, HuggingFace 4-bit nf4 fallback. ollama_tag drives Ollama; hf_repo drives HF.",
   "_medmarks_ref": "https://sophont.med/blog/medmarks",
   "default_model": "qwen3-4b",
   "quantization": "4bit",
@@ -11,6 +11,7 @@
       "name": "Qwen 3 Embedding 0.6B",
       "provider": "Alibaba",
       "hf_repo": "Qwen/Qwen3-Embedding-0.6B",
+      "ollama_tag": "qwen3-embedding:0.6b",
       "size": "600M",
       "license": "Apache 2.0",
       "gated": false,
@@ -18,7 +19,7 @@
       "rteb_health_mean_task_score": null,
       "rteb_healthcare_rank": 177,
       "embedding_dim": 1024,
-      "default_embedding": false
+      "default_embedding": true
     },
     {
       "id": "octen-embedding-0.6b",
@@ -32,7 +33,7 @@
       "rteb_health_mean_task_score": 73.79,
       "rteb_healthcare_rank": 15,
       "embedding_dim": 1024,
-      "default_embedding": true
+      "default_embedding": false
     }
   ],
   "models": [
@@ -40,26 +41,13 @@
       "id": "qwen3-4b",
       "hf_repo": "Qwen/Qwen3-4B",
       "ollama_tag": "qwen3:4b",
-      "name": "Qwen3 4B + thinking=true",
-      "provider": "Alibaba",
-      "size": "4B",
-      "medmarks_rank": null,
-      "medmarks_win_rate": null,
-      "thinking": true,
-      "license": "Apache 2.0",
-      "gated": false,
-      "hf_token_required": false
-    },
-    {
-      "id": "qwen3-4b-thinking",
-      "hf_repo": "Qwen/Qwen3-4B-Thinking-2507",
-      "ollama_tag": "qwen3:4b-thinking-2507-q4_K_M",
-      "name": "Qwen3 4B Thinking 2507",
+      "name": "Qwen3 4B (Thinking)",
       "provider": "Alibaba",
       "size": "4B",
       "medmarks_rank": 33,
       "medmarks_win_rate": 0.4918,
       "thinking": true,
+      "thinking_note": "HF: pass enable_thinking=True in chat template. Ollama: pass think=True in payload. Thinking tokens wrapped in <think>...</think> and stripped before returning answer.",
       "license": "Apache 2.0",
       "gated": false,
       "hf_token_required": false
@@ -67,8 +55,24 @@
   ],
   "excluded_models": [
     {
+      "id": "qwen3-8b",
+      "hf_repo": "Qwen/Qwen3-8B",
+      "ollama_tag": "qwen3:8b",
+      "name": "Qwen3 8B (Thinking)",
+      "provider": "Alibaba",
+      "size": "8B",
+      "medmarks_rank": 29,
+      "medmarks_win_rate": 0.5024,
+      "thinking": true,
+      "license": "Apache 2.0",
+      "gated": false,
+      "hf_token_required": false,
+      "excluded_reason": "T4 VRAM constraints and marginal Medmarks delta over 4B (rank 29 vs 33, win rate 0.50 vs 0.49). Included in grid design but dropped from final runs."
+    },
+    {
       "id": "ministral-3b",
       "hf_repo": "mistralai/Ministral-3B-Instruct-2410",
+      "ollama_tag": "mistral:3b",
       "name": "Ministral 3B",
       "provider": "Mistral AI",
       "size": "3B",
@@ -83,6 +87,7 @@
     {
       "id": "medgemma-4b",
       "hf_repo": "google/medgemma-4b-it",
+      "ollama_tag": "medgemma:4b",
       "name": "MedGemma 4B",
       "provider": "Google",
       "size": "4B",
@@ -97,6 +102,7 @@
     {
       "id": "gemma3-4b",
       "hf_repo": "google/gemma-3-4b-it",
+      "ollama_tag": "gemma3:4b",
       "name": "Gemma 3 4B",
       "provider": "Google",
       "size": "4B",
@@ -112,6 +118,7 @@
     {
       "id": "phi4-mini",
       "hf_repo": "microsoft/Phi-4-mini-instruct",
+      "ollama_tag": "phi4-mini:3.8b",
       "name": "Phi-4 Mini [3.8B]",
       "provider": "Microsoft",
       "size": "3.8B",
@@ -126,32 +133,41 @@
     {
       "id": "llama3.2-3b",
       "name": "LLaMA 3.2 3B",
+      "hf_repo": "meta-llama/Llama-3.2-3B-Instruct",
+      "ollama_tag": "llama3.2:3b",
       "provider": "Meta",
-      "reason": "Not ranked in Medmarks tiny medical benchmark. Replaced by models with empirical medical task evidence."
+      "excluded_reason": "Not ranked in Medmarks tiny medical benchmark. Replaced by models with empirical medical task evidence."
     },
     {
       "id": "granite4-3b",
       "name": "Granite 4 3B",
+      "hf_repo": "ibm-granite/granite-4.0-tiny-preview",
+      "ollama_tag": "granite4:3b-h",
       "provider": "IBM",
-      "reason": "Medmarks explicitly identifies Granite 4.0 as underperforming models in the weight class below it on medical tasks."
+      "excluded_reason": "Medmarks explicitly identifies Granite 4.0 as underperforming models in the weight class below it on medical tasks."
     },
     {
       "id": "falcon3-3b",
       "name": "Falcon 3 3B",
+      "hf_repo": "tiiuae/Falcon3-3B-Instruct",
+      "ollama_tag": "falcon3:3b",
       "provider": "Technology Innovation Institute (TII)",
-      "reason": "Not ranked in Medmarks tiny medical benchmark. No medical QA benchmark data to justify inclusion."
+      "excluded_reason": "Not ranked in Medmarks tiny medical benchmark. No medical QA benchmark data to justify inclusion."
     },
     {
       "id": "cogito-3b",
       "name": "Cogito 3B",
+      "hf_repo": "deepcogito/cogito-v1-preview-llama-3B",
+      "ollama_tag": "cogito:3b",
       "provider": "Deep Cogito",
-      "reason": "Performance claims unverified by independent medical benchmarks. Not ranked in Medmarks."
+      "excluded_reason": "Performance claims unverified by independent medical benchmarks. Not ranked in Medmarks."
     },
     {
       "id": "ministral-3b-reasoning",
       "name": "Ministral 3B Reasoning",
+      "hf_repo": "mistralai/Mistral-3B-Reasoning",
       "provider": "Mistral AI",
-      "reason": "Medmarks rank 50 (win rate 0.3618) — lower than Ministral 3B Instruct (rank 47, 0.4173). Instruct variant is stronger for medical QA."
+      "excluded_reason": "Medmarks rank 50 (win rate 0.3618) — lower than Ministral 3B Instruct (rank 47, 0.4173). Instruct variant is stronger for medical QA."
     }
   ]
 }
