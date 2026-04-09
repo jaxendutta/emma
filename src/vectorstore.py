@@ -177,20 +177,55 @@ def chunk_all_textbooks(
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
 
+def _resolve_embedding_model(model_name: str | None) -> str:
+    """
+    Resolve a model identifier to a HuggingFace repo path.
+
+    Accepts either:
+    - An HF repo path directly (contains '/'), e.g. 'Qwen/Qwen3-Embedding-0.6B'
+    - A models.json id, e.g. 'octen-embedding-0.6b'
+    - None → returns BIOMEDICAL_MODEL (the default from models.json)
+    """
+    if model_name is None:
+        return BIOMEDICAL_MODEL
+    if "/" in model_name:
+        return model_name  # already an HF repo path
+    # Look up by id in models.json
+    cfg_path = REPO_ROOT / "config" / "models.json"
+    if cfg_path.exists():
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        for m in cfg.get("embeddings_models", []):
+            if m.get("id") == model_name:
+                return m["hf_repo"]
+    return model_name  # fall through — let sentence-transformers try it
+
+
 def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
     """
-    Load Qwen3-Embedding-0.6B (or fallback to MiniLM).
+    Load an embedding model by HF repo path or models.json id.
+
+    Accepts either a full HF repo (e.g. 'Qwen/Qwen3-Embedding-0.6B') or a
+    short id from config/models.json (e.g. 'octen-embedding-0.6b').
+
+    Device priority: CUDA → MPS (Apple Silicon) → CPU.
 
     On CUDA: loads in float16 with device_map='cuda' so weights stream
     directly onto GPU in fp16 — avoids the 2× peak VRAM of loading in
     fp32 then moving. Checks free VRAM before attempting to load.
 
+    On MPS: loads with device='mps' in float16.
+
     On CPU: loads in float32, no special handling needed.
     """
-    target = model_name or BIOMEDICAL_MODEL
+    import torch
+
+    target = _resolve_embedding_model(model_name)
+
     try:
-        import torch
         is_cuda = torch.cuda.is_available()
+        is_mps  = (not is_cuda
+                   and hasattr(torch.backends, "mps")
+                   and torch.backends.mps.is_available())
 
         if is_cuda:
             torch.cuda.empty_cache()
@@ -215,11 +250,20 @@ def load_embedding_model(model_name: str | None = None) -> SentenceTransformer:
                 },
                 tokenizer_kwargs={"padding_side": "left"},
             )
+            device = "cuda"
+        elif is_mps:
+            model = SentenceTransformer(
+                target,
+                model_kwargs={"torch_dtype": torch.float16},
+                device="mps",
+                tokenizer_kwargs={"padding_side": "left"},
+            )
+            device = "mps"
         else:
             model = SentenceTransformer(target)
+            device = "cpu"
 
-        device = "cuda" if is_cuda else "cpu"
-        dtype  = next(model.parameters()).dtype
+        dtype = next(model.parameters()).dtype
         print(f"[Vectorstore] Embedding model: {target}  (dtype={dtype}, device={device})")
         return model
 
