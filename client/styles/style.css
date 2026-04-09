@@ -589,19 +589,6 @@ h1 em {
     cursor: grabbing;
 }
 
-df-messenger {
-    --df-messenger-button-titlebar-color: #2d6a4f;
-    --df-messenger-chat-background-color: #faf8f5;
-    --df-messenger-bot-message: #f0ebe4;
-    --df-messenger-user-message: #d8f3dc;
-    --df-messenger-font-color: #2a2420;
-    z-index: 999;
-}
-
-body.tab-graph df-messenger {
-    display: none;
-}
-
 @keyframes fadeIn {
     from {
         opacity: 0;
