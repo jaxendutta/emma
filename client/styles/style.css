@@ -154,8 +154,16 @@ h1 em {
     overflow: hidden;
 }
 
+.grid.grid-3 {
+    grid-template-columns: repeat(1, 1fr);
+}
+
 @media (min-width: 600px) {
     .grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .grid.grid-3 {
         grid-template-columns: repeat(2, 1fr);
     }
 }
@@ -163,6 +171,27 @@ h1 em {
 @media (min-width: 900px) {
     .grid {
         grid-template-columns: repeat(4, 1fr);
+    }
+
+    .grid.grid-3 {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+.quiz-card-header {
+    font-size:1.15rem; 
+    padding-bottom: 0.75em; 
+    font-family: var(--serif);
+}
+
+@media (max-width: 720px) {
+    .quiz-card-header {
+        padding-bottom: 0.5em;
+        font-size: 1.05rem;
+    }
+
+    .card-desc {
+        font-size: 0.85rem;
     }
 }
 
