@@ -37,11 +37,14 @@ Environment variables
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import random
 import os
 import textwrap
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -50,23 +53,39 @@ from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("emma.api")
 
+# ── Thread pool for blocking RAG calls ────────────────────────────────────────
+# The LLM inference is synchronous. Running it directly inside an async handler
+# blocks the entire event loop. The executor lets us await it without blocking.
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="emma-rag")
+
+# Dialogflow ES hard-kills webhook calls after 5 s and shows its default response.
+# We leave 0.5 s of headroom so our handler always wins the race.
+_RAG_TIMEOUT: float = float(os.environ.get("EMMA_RAG_TIMEOUT", "4.5"))
+
 # ── Feature flag ──────────────────────────────────────────────────────────────
 
 RAG_ENABLED = os.environ.get("EMMA_USE_RAG", "false").lower() == "true"
 
-# ── Lazy retriever (loaded once on first RAG request) ─────────────────────────
+# ── Retriever (loaded at startup when RAG is enabled) ─────────────────────────
 
 _retriever = None
+_RETRIEVER_FAILED = object()  # sentinel: load was attempted and failed
+
 
 def _get_retriever():
     global _retriever
+    if _retriever is _RETRIEVER_FAILED:
+        raise RuntimeError("RAG pipeline unavailable (failed to load at startup)")
     if _retriever is None:
         from src.retrieval import EMMARetriever
         model_id = os.environ.get("EMMA_MODEL_ID") or None
-        _retriever = EMMARetriever.load(model_id=model_id)
-        logger.info("EMMARetriever loaded (model=%s)", _retriever.model_id)
+        try:
+            _retriever = EMMARetriever.load(model_id=model_id)
+            logger.info("EMMARetriever loaded (model=%s)", _retriever.model_id)
+        except Exception:
+            _retriever = _RETRIEVER_FAILED
+            raise
     return _retriever
-
 
 # ── Session memory ────────────────────────────────────────────────────────────
 # Lightweight in-process store keyed on Dialogflow session ID.
@@ -247,23 +266,50 @@ def _static_response(intent_key: str, cond_key: str) -> str:
     )
 
 
-# ── RAG response builder ─────────────────────────────────────────────────────────────────────────────
+# ── RAG response builder ─────────────────────────────────────────────────────
 
-def _rag_response(intent_key: str, query: str) -> str:
+def _rag_response_sync(query: str) -> str:
+    """Blocking RAG call — must run in a thread, never directly in the event loop."""
+    retriever = _get_retriever()
+    result    = retriever.answer(query, use_rag=True)
+    answer    = result.answer.strip()
+    if not answer:
+        raise ValueError("Empty answer from retriever")
+    return answer
+
+
+async def _rag_response(intent_key: str, query: str,
+                         cond_key: str | None = None) -> str:
     """
-    Run query through the full RAG pipeline and return the answer text.
-    Falls back gracefully on any retriever failure.
+    Async wrapper around the blocking RAG pipeline.
+
+    Runs inference in a thread pool so the event loop stays free.
+    Enforces _RAG_TIMEOUT (default 4.5 s) so Dialogflow's 5-second hard
+    deadline is never hit.  On timeout or error, falls back to the static
+    canned response when the condition is in the ontology, or a short
+    apology otherwise.
     """
+    loop = asyncio.get_event_loop()
     try:
-        retriever = _get_retriever()
-        result = retriever.answer(query, use_rag=True)
-        answer = result.answer.strip()
-        if not answer:
-            raise ValueError("Empty answer from retriever")
+        answer = await asyncio.wait_for(
+            loop.run_in_executor(_executor, _rag_response_sync, query),
+            timeout=_RAG_TIMEOUT,
+        )
+        logger.info("RAG OK | intent=%s | len=%d", intent_key, len(answer))
         return answer
+    except asyncio.TimeoutError:
+        logger.warning("RAG timed out (>%.1f s) for intent=%s — using fallback",
+                       _RAG_TIMEOUT, intent_key)
     except Exception as exc:
-        logger.warning("RAG pipeline failed (%s); using static fallback", exc)
-        return "I encountered an issue retrieving an answer. Please try again."
+        logger.warning("RAG error for intent=%s: %s", intent_key, exc)
+
+    # Graceful fallback: static response if we know the condition, else apology
+    if cond_key:
+        return _static_response(intent_key, cond_key)
+    return (
+        "I'm taking a little longer than usual to look that up. "
+        "Please try asking again in a moment."
+    )
 
 
 # ── Intent -> query templates ────────────────────────────────────────────────────────────
@@ -303,10 +349,29 @@ _WELCOME_OPENERS: list[tuple[str, str | None, str | None]] = [
 
 # ── FastAPI app ─────────────────────────────────────────────────────────────────────────────
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifecycle events."""
+    # Startup
+    if RAG_ENABLED:
+        try:
+            retriever = _get_retriever()
+            retriever._ensure_model_loaded()
+        except Exception as exc:
+            logger.error(
+                "RAG pipeline failed to load at startup (%s); "
+                "all requests will use the static fallback.",
+                exc,
+            )
+    yield
+    # Shutdown (if needed in the future)
+
+
 app = FastAPI(
     title="EMMA API",
     description="FastAPI webhook backend for EMMA — Emergency Medicine Mentoring Agent",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -460,7 +525,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             # Condition is in the ontology evaluation domain.
             if RAG_ENABLED:
                 rag_query = _build_rag_query(intent_key, cond_display, raw_query)
-                answer = _rag_response(intent_key, rag_query)
+                answer = await _rag_response(intent_key, rag_query, cond_key)
             else:
                 answer = _static_response(intent_key, cond_key)
 
@@ -472,7 +537,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             # Without RAG: we only have static responses for the 8 conditions,
             # so we tell the user that honestly rather than pretending otherwise.
             if RAG_ENABLED and raw_query:
-                answer = _rag_response(intent_key, raw_query)
+                answer = await _rag_response(intent_key, raw_query)
             elif raw_query:
                 cond_list = " · ".join(
                     meta["name"] for meta in _CONDITION_META().values()
@@ -517,13 +582,13 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             if prev_cond and prev_display:
                 rag_q = _build_rag_query(prev_intent, prev_display, "")
                 if RAG_ENABLED:
-                    answer = _rag_response(prev_intent, rag_q)
+                    answer = await _rag_response(prev_intent, rag_q, prev_cond)
                 else:
                     answer = _static_response(prev_intent, prev_cond)
             else:
                 answer = "What condition would you like to know about?"
         elif RAG_ENABLED and raw_query:
-            answer = _rag_response("fallback", raw_query)
+            answer = await _rag_response("fallback", raw_query)
         else:
             answer = (
                 "I'm not sure I understood that. I can help with:\n"
@@ -540,7 +605,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     else:
         # Unknown intent -- try RAG on the raw query, else graceful fallback.
         if RAG_ENABLED and raw_query:
-            answer = _rag_response("unknown", raw_query)
+            answer = await _rag_response("unknown", raw_query)
         else:
             answer = (
                 "I received your question but I'm not sure how to help. "
@@ -576,7 +641,7 @@ async def direct_query(request: Request) -> JSONResponse:
         raise HTTPException(status_code=422, detail="'query' field is required")
 
     if RAG_ENABLED:
-        answer = _rag_response("direct", query)
+        answer = await _rag_response("direct", query)
     else:
         answer = (
             "RAG pipeline is not enabled. Set EMMA_USE_RAG=true and ensure "

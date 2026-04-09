@@ -29,6 +29,9 @@ import argparse
 import os
 
 import uvicorn
+from dotenv import load_dotenv
+
+load_dotenv()  # populate os.environ from .env before uvicorn forks workers
 
 
 def parse_args():
