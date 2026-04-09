@@ -18,13 +18,13 @@
       "rteb_health_mean_task_score": null,
       "rteb_healthcare_rank": 177,
       "embedding_dim": 1024,
-      "default_embedding": true
+      "default_embedding": false
     },
     {
       "id": "octen-embedding-0.6b",
       "name": "Octen Embedding 0.6B",
       "provider": "Octen",
-      "hf_repo": "octen-ai/octen-embedding-0.6b",
+      "hf_repo": "Octen/Octen-Embedding-0.6B",
       "size": "600M",
       "license": "Apache 2.0",
       "gated": false,
@@ -32,7 +32,7 @@
       "rteb_health_mean_task_score": 73.79,
       "rteb_healthcare_rank": 15,
       "embedding_dim": 1024,
-      "default_embedding": false
+      "default_embedding": true
     }
   ],
   "models": [
