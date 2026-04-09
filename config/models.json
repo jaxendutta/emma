@@ -7,8 +7,8 @@
   "quantization": "4bit",
   "embeddings_models": [
     {
-      "id": "qwen3-embeddings-0.6b",
-      "name": "Qwen 3 Embeddings 0.6B",
+      "id": "qwen3-embedding-0.6b",
+      "name": "Qwen 3 Embedding 0.6B",
       "provider": "Alibaba",
       "hf_repo": "Qwen/Qwen3-Embedding-0.6B",
       "size": "600M",

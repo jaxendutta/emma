@@ -13,8 +13,8 @@
   <link rel="stylesheet" href="styles/style.css" />
   <link rel="stylesheet" href="styles/nav.css" />
   <link rel="stylesheet" href="styles/graph.css" />
+  <link rel="stylesheet" href="styles/chat.css" />
   <link rel="icon" type="image/x-icon" href="assets/logo.jpg">
-  <script src="https://www.gstatic.com/dialogflow-console/fast/messenger/bootstrap.js?v=1"></script>
 </head>
 
 <body>
@@ -140,8 +140,38 @@
     </div>
   </div>
 
-  <df-messenger intent="WELCOME" chat-title="EMMA" agent-id="449acc2d-a63d-4773-b4da-090d71bc0b52" language-code="en">
-  </df-messenger>
+  <!-- EMMA Custom Chat Widget -->
+  <button id="emma-chat-toggle" aria-label="Open EMMA chat" title="Chat with EMMA">
+    <svg class="icon-chat" width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <path d="M3 14.5C3 15.88 4.12 17 5.5 17H16.5C17.88 17 19 15.88 19 14.5V8.5C19 7.12 17.88 6 16.5 6H5.5C4.12 6 3 7.12 3 8.5V14.5Z" stroke="white" stroke-width="1.6" />
+      <circle cx="8" cy="11.5" r="1" fill="white" />
+      <circle cx="11" cy="11.5" r="1" fill="white" />
+      <circle cx="14" cy="11.5" r="1" fill="white" />
+    </svg>
+    <svg class="icon-close" width="18" height="18" viewBox="0 0 18 18" fill="none">
+      <path d="M4 4L14 14M14 4L4 14" stroke="white" stroke-width="2" stroke-linecap="round" />
+    </svg>
+  </button>
+
+  <div id="emma-chat-panel" role="dialog" aria-label="EMMA chat">
+    <div class="chat-header">
+      <div class="chat-header-avatar">E</div>
+      <div class="chat-header-info">
+        <div class="chat-header-name">EMMA</div>
+        <div class="chat-header-status">Emergency Medicine Mentor</div>
+      </div>
+    </div>
+    <div id="emma-chat-messages" aria-live="polite"></div>
+    <div class="chat-input-area">
+      <textarea id="emma-chat-input" rows="1" placeholder="Ask about symptoms, diagnosis, treatment…"
+        autocomplete="off" aria-label="Chat message"></textarea>
+      <button id="emma-chat-send" aria-label="Send message">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M2 8L14 2L10 8L14 14L2 8Z" fill="white" />
+        </svg>
+      </button>
+    </div>
+  </div>
 
   <!-- ONTOLOGY GRAPH TAB -->
   <div id="tab-graph" class="panel">

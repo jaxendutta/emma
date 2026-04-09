@@ -1,0 +1,281 @@
+/* ── EMMA Chat Widget ─────────────────────────────────────────────────────── */
+
+#emma-chat-toggle {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(45, 106, 79, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    transition: background 0.2s, transform 0.18s, box-shadow 0.2s;
+}
+
+#emma-chat-toggle:hover {
+    background: var(--accent2);
+    transform: scale(1.06);
+    box-shadow: 0 6px 20px rgba(45, 106, 79, 0.45);
+}
+
+#emma-chat-toggle svg.icon-close {
+    display: none;
+}
+
+#emma-chat-toggle.open svg.icon-chat {
+    display: none;
+}
+
+#emma-chat-toggle.open svg.icon-close {
+    display: block;
+}
+
+/* ── Panel ── */
+
+#emma-chat-panel {
+    position: fixed;
+    bottom: 92px;
+    right: 24px;
+    width: 360px;
+    max-height: 520px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 8px 36px rgba(42, 36, 32, 0.15);
+    display: flex;
+    flex-direction: column;
+    z-index: 999;
+    overflow: hidden;
+    transform: scale(0.94) translateY(10px);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.22s ease, opacity 0.22s ease;
+    transform-origin: bottom right;
+}
+
+#emma-chat-panel.open {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+    pointer-events: all;
+}
+
+/* ── Header ── */
+
+.chat-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 16px;
+    background: var(--accent);
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.chat-header-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--serif);
+    font-size: 1rem;
+    font-weight: 400;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+}
+
+.chat-header-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.chat-header-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.chat-header-status {
+    font-size: 0.72rem;
+    opacity: 0.75;
+    margin-top: 1px;
+}
+
+/* ── Messages ── */
+
+#emma-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    scroll-behavior: smooth;
+}
+
+.chat-msg {
+    max-width: 84%;
+    font-size: 0.875rem;
+    line-height: 1.55;
+    padding: 9px 13px;
+    border-radius: 12px;
+    word-break: break-word;
+    animation: chat-msg-in 0.18s ease both;
+}
+
+@keyframes chat-msg-in {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.chat-msg.bot {
+    background: #f0ebe4;
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+    align-self: flex-start;
+}
+
+.chat-msg.user {
+    background: var(--light);
+    color: var(--text);
+    border-bottom-right-radius: 4px;
+    align-self: flex-end;
+}
+
+.chat-msg p {
+    margin: 0 0 4px;
+}
+
+.chat-msg p:last-child {
+    margin-bottom: 0;
+}
+
+.chat-msg ul {
+    padding-left: 1.1rem;
+    margin: 4px 0 0;
+}
+
+.chat-msg li {
+    margin-bottom: 2px;
+}
+
+/* ── Typing indicator ── */
+
+.chat-typing {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    align-self: flex-start;
+    background: #f0ebe4;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border-bottom-left-radius: 4px;
+    animation: chat-msg-in 0.18s ease both;
+}
+
+.chat-typing span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: typing-dot 1.2s infinite ease-in-out;
+}
+
+.chat-typing span:nth-child(2) { animation-delay: 0.18s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes typing-dot {
+    0%, 60%, 100% { transform: translateY(0);    opacity: 0.4; }
+    30%           { transform: translateY(-4px); opacity: 1;   }
+}
+
+/* ── Input area ── */
+
+.chat-input-area {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--surface);
+}
+
+#emma-chat-input {
+    flex: 1;
+    padding: 8px 13px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-family: var(--sans);
+    font-size: 0.875rem;
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    resize: none;
+    max-height: 80px;
+    overflow-y: auto;
+    line-height: 1.45;
+    transition: border-color 0.15s;
+}
+
+#emma-chat-input:focus {
+    border-color: var(--accent2);
+}
+
+#emma-chat-input::placeholder {
+    color: var(--muted);
+}
+
+#emma-chat-send {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.1s;
+}
+
+#emma-chat-send:hover  { background: var(--accent2); }
+#emma-chat-send:active { transform: scale(0.9); }
+
+#emma-chat-send:disabled {
+    background: var(--border);
+    cursor: not-allowed;
+}
+
+/* ── Hide widget on Ontology tab ── */
+
+body.tab-graph #emma-chat-toggle,
+body.tab-graph #emma-chat-panel {
+    display: none;
+}
+
+/* ── Mobile ── */
+
+@media (max-width: 480px) {
+    #emma-chat-panel {
+        width: calc(100vw - 24px);
+        right: 12px;
+        bottom: 80px;
+    }
+
+    #emma-chat-toggle {
+        right: 16px;
+        bottom: 16px;
+    }
+}
