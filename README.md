@@ -207,7 +207,7 @@ The 39 topic assignments provide finer-grained routing than specialty labels. A 
 
 ### 8.1. Relevant files
 
--`notebooks/04_rag_pipeline.ipynb`
+- `notebooks/04_rag_pipeline.ipynb`
 
 Wire up SpaCy NER -> FAISS retrieval -> OWL ontology -> prompt construction -> local LLM. Compare answers with and without RAG on a set of MedQA questions. Low-confidence retrievals flagged in prompt.
 
@@ -215,7 +215,7 @@ Wire up SpaCy NER -> FAISS retrieval -> OWL ontology -> prompt construction -> l
 
 ### 9.1. Relevant files
 
--`notebooks/05_quiz_mode.ipynb`
+- `notebooks/05_crs.ipynb`
 
 Conversational quiz: serve MedQA question, accept free-text answer, generate textbook-grounded critique. Includes Surprise SVD recommender tracking user performance by specialty.
 
