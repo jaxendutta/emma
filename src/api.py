@@ -54,17 +54,25 @@ logger = logging.getLogger("emma.api")
 
 RAG_ENABLED = os.environ.get("EMMA_USE_RAG", "false").lower() == "true"
 
-# ── Lazy retriever (loaded once on first RAG request) ─────────────────────────
+# ── Retriever (loaded at startup when RAG is enabled) ─────────────────────────
 
 _retriever = None
+_RETRIEVER_FAILED = object()  # sentinel: load was attempted and failed
+
 
 def _get_retriever():
     global _retriever
+    if _retriever is _RETRIEVER_FAILED:
+        raise RuntimeError("RAG pipeline unavailable (failed to load at startup)")
     if _retriever is None:
         from src.retrieval import EMMARetriever
         model_id = os.environ.get("EMMA_MODEL_ID") or None
-        _retriever = EMMARetriever.load(model_id=model_id)
-        logger.info("EMMARetriever loaded (model=%s)", _retriever.model_id)
+        try:
+            _retriever = EMMARetriever.load(model_id=model_id)
+            logger.info("EMMARetriever loaded (model=%s)", _retriever.model_id)
+        except Exception:
+            _retriever = _RETRIEVER_FAILED
+            raise
     return _retriever
 
 
@@ -315,6 +323,25 @@ app.add_middleware(
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _startup():
+    """Pre-load the RAG pipeline at startup when EMMA_USE_RAG is set.
+
+    This ensures models are warm before the first request arrives and
+    surfaces FAISS/model artefact errors immediately at boot rather than
+    silently on the first user query.
+    """
+    if RAG_ENABLED:
+        try:
+            _get_retriever()
+        except Exception as exc:
+            logger.error(
+                "RAG pipeline failed to load at startup (%s); "
+                "all requests will use the static fallback.",
+                exc,
+            )
 
 
 # ── Health check ────────────────────────────────────────────────────────────────────────────────
