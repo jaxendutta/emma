@@ -215,3 +215,26 @@ hamburger.addEventListener('click', e => {
 });
 
 overlay.addEventListener('click', closeDrawer);
+
+// ── Specialties grid population ───────────────────────────────────────────
+window.renderSpecialtiesGrid = function () {
+    const specialties = [
+        "Anaesthesia", "Anatomy", "Biochemistry", "Dental", "Dermatology", "ENT", "Internal Medicine", "Microbiology", "Obstetrics & Gynaecology", "Ophthalmology", "Orthopaedics", "Pathology", "Pediatrics", "Pharmacology", "Physiology", "Psychiatry", "Public Health", "Radiology", "Surgery", "Emergency Medicine"
+    ];
+    const grid = document.getElementById('specialties-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    specialties.forEach(name => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        const div = document.createElement('div');
+        div.className = 'card-name';
+        div.textContent = name;
+        card.appendChild(div);
+        grid.appendChild(card);
+    });
+};
+
+window.addEventListener('DOMContentLoaded', function () {
+    window.renderSpecialtiesGrid();
+});
