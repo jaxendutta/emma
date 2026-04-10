@@ -58,7 +58,7 @@
       "id":             "qwen3-embedding-0.6b__qwen3-4b-thinking-2507__rag",
       "embedding":      "qwen3-embedding-0.6b",
       "llm":            "qwen3-4b-thinking-2507",
-      "rag":            true
+      "rag":            true,
       "n_eval":         100,
       "accuracy":       32.0,
       "mean_top_score": 65.07,
