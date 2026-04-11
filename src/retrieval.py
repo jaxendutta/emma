@@ -5,7 +5,7 @@ End-to-end RAG pipeline for EMMA.
 
 Pipeline stages
 ---------------
-1. NER (SpaCy en_core_sci_md)
+1. NER (SpaCy en_ner_bc5cdr_md: DISEASE + CHEMICAL entities from BC5CDR corpus)
    Extract clinical entities from the raw query. On clinical vignettes,
    query the FAISS index with the extracted entity string to avoid
    embedding dilution from incidental language.
@@ -110,11 +110,14 @@ def list_models() -> list[dict]:
 DEFAULT_TOP_K   = 5
 MIN_CONFIDENCE  = "medium"
 
-ENTITY_LABELS = {
-    "DISEASE", "CHEMICAL", "GENE_OR_GENE_PRODUCT",
-    "ORGANISM", "CELL_TYPE", "CELL_LINE",
-    "DNA", "RNA", "PROTEIN",
-}
+NER_MODEL = "en_ner_bc5cdr_md"
+
+# en_ner_bc5cdr_md entity labels (BC5CDR corpus: 1,500 PubMed articles,
+# 4,409 chemicals, 5,818 diseases, 3,116 chemical-disease interactions).
+# These are the ONLY two labels the bc5cdr model produces.
+# en_core_sci_md (generic mention detector) outputs a single ENTITY label —
+# it is NOT used for typed extraction; only for dependency parsing in NB04b.
+ENTITY_LABELS = {"DISEASE", "CHEMICAL"}
 
 SYSTEM_PROMPT = (
     "You are EMMA, an Emergency Medicine Mentoring Agent helping medical students "
@@ -158,18 +161,29 @@ class PipelineResult:
 
 # ── NER ───────────────────────────────────────────────────────────────────────
 
-def load_ner_model(model_name: str = "en_core_sci_md"):
-    """Load SpaCy biomedical NER model."""
+def load_ner_model(model_name: str = NER_MODEL):
+    """
+    Load SpaCy biomedical NER model.
+ 
+    Default: en_ner_bc5cdr_md — trained on BC5CDR corpus, labels: DISEASE, CHEMICAL.
+    This is the correct model for typed clinical entity extraction and query rewriting.
+ 
+    en_core_sci_md is a generic mention detector (single ENTITY label) and is
+    unsuitable for typed NER. It is used only for dependency parsing in NB04b.
+ 
+    Install the default model:
+        pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_ner_bc5cdr_md-0.5.4.tar.gz
+    """
     import spacy
     try:
         return spacy.load(model_name)
     except OSError:
         raise OSError(
-            f"SpaCy model '{model_name}' not found.\n"
-            f"Install with: pip install https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/"
-            f"releases/v0.5.4/{model_name}-0.5.4.tar.gz"
+            f"⚠ SpaCy model '{model_name}' not found!\n"
+            f"Install with:\n"
+            f"  uv add https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/{model_name}-0.5.4.tar.gz"
+            f"  uv sync"
         )
-
 
 def extract_entities(text: str, nlp) -> list[str]:
     """Run NER and return unique entity strings for query rewriting."""
@@ -281,7 +295,7 @@ def warmup_ollama(tag: str, base_url: str = "http://localhost:11434") -> bool:
     or the request failed (caller can decide whether to fall back to HF).
     """
     import requests
-    print(f"  Warming up Ollama model '{tag}'...")
+    print(f"> Warming up Ollama model '{tag}' for inference...")
     try:
         r = requests.post(
             f"{base_url}/api/chat",
@@ -389,7 +403,7 @@ def load_hf_model(model_cfg: dict, hf_token: str | None = None):
         bnb_4bit_use_double_quant=True,
     )
 
-    print(f"Loading {model_cfg['name']} ({hf_repo}) in 4-bit nf4...")
+    print(f"> Loading {model_cfg['name']} ({hf_repo}) in 4-bit nf4...")
 
     if torch.cuda.is_available():
         print(f"  GPU: {torch.cuda.get_device_name(0)}  "
@@ -655,15 +669,15 @@ class EMMARetriever:
         # Validate model_id exists in config
         get_model_config(mid)
 
-        print("Loading vectorstore...")
+        print(f"> Loading vectorstore ({mid})...")
         _emb_cfg = get_embedding_config(emb_model_name or get_default_embedding_id())
         _vs_path = root / "models" / "vectorstore" / _emb_cfg["id"]
         index, metadata, texts = load_index_with_texts(_vs_path)
 
-        print("Loading embedding model...")
+        print(f"> Loading embedding model ({_emb_cfg['hf_repo']})...")
         emb_model = load_embedding_model(_emb_cfg["hf_repo"])
 
-        print("Loading specialty classifier...")
+        print(f"> Loading specialty classifier ({NER_MODEL})...")
         clf_path = root / "models" / "classifier" / "tfidf_svm.pkl"
         le_path  = root / "models" / "classifier" / "label_encoder.pkl"
         if not clf_path.exists():
@@ -673,7 +687,7 @@ class EMMARetriever:
         with open(le_path, "rb") as f:
             label_encoder = pickle.load(f)
 
-        print("Loading SpaCy NER model...")
+        print(f"> Loading SpaCy NER model ({NER_MODEL})...")
         nlp = load_ner_model()
 
         # ── Backend preparation ───────────────────────────────────────────────
@@ -708,7 +722,7 @@ class EMMARetriever:
         # Even when Ollama is the primary backend, it can time out mid-inference.
         # We load HF eagerly here so the fallback path never fails with
         # "no HF model is loaded". Cost: ~2.5 GB VRAM, loaded once at startup.
-        print("Pre-loading HuggingFace model as fallback...")
+        print("> Pre-loading HuggingFace model as fallback...")
         retriever._ensure_hf_model_loaded()
 
         return retriever
@@ -721,7 +735,7 @@ class EMMARetriever:
         if self._hf_loaded_id == self.model_id and self._hf_model is not None:
             return
         if self._hf_model is not None:
-            print(f"Unloading HF model {self._hf_loaded_id}...")
+            print(f"> Unloading HF model {self._hf_loaded_id}...")
             _unload_model(self._hf_model)
             self._hf_model     = None
             self._hf_tokenizer = None

@@ -408,7 +408,7 @@ def load_index(
     """
     Load the FAISS index and metadata from disk.
     """
-    src = Path(index_dir) if index_dir else VECTORSTORE_DIR
+    src = VECTORSTORE_DIR / index_dir if index_dir else VECTORSTORE_DIR
     index_path = src / "index.faiss"
     meta_path  = src / "metadata.pkl"
 
@@ -439,7 +439,7 @@ def load_index_with_texts(
     texts    : list[str]
     """
     index, metadata = load_index(index_dir)
-    src = Path(index_dir) if index_dir else VECTORSTORE_DIR
+    src = VECTORSTORE_DIR / index_dir if index_dir else VECTORSTORE_DIR
     texts_path = src / "texts.pkl"
 
     if not texts_path.exists():
