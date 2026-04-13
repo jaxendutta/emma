@@ -522,6 +522,8 @@ def generate_answer_hf(
 
 # ── Unified inference: Ollama first, HF fallback ─────────────────────────────
 
+_inference_warned: set[str] = set()
+
 def generate_answer(
     prompt:     str,
     model_cfg:  dict,
@@ -551,9 +553,15 @@ def generate_answer(
     # ── Try Ollama ────────────────────────────────────────────────────────────
     if ollama_tag:
         if not _ollama_available(ollama_url):
-            print(f"  [inference] Ollama not reachable at {ollama_url} -> falling back to HF")
+            warn_key = f"unavailable:{ollama_url}"
+            if warn_key not in _inference_warned:
+                print(f"  [inference] Ollama not reachable at {ollama_url} -> falling back to HF")
+                _inference_warned.add(warn_key)
         elif not _ollama_model_pulled(ollama_tag, ollama_url):
-            print(f"  [inference] Ollama model '{ollama_tag}' not pulled -> falling back to HF")
+            warn_key = f"unpulled:{ollama_tag}"
+            if warn_key not in _inference_warned:
+                print(f"  [inference] Ollama model '{ollama_tag}' not pulled -> falling back to HF")
+                _inference_warned.add(warn_key)
         else:
             try:
                 print(f"  [inference] Using Ollama ({ollama_tag})")
@@ -562,7 +570,10 @@ def generate_answer(
                 )
                 return answer, thinking, "ollama"
             except Exception as exc:
-                print(f"  [inference] Ollama failed ({exc}) -> falling back to HF")
+                warn_key = f"failed:{ollama_tag}"
+                if warn_key not in _inference_warned:
+                    print(f"  [inference] Ollama failed ({exc}) -> falling back to HF")
+                    _inference_warned.add(warn_key)
 
     # ── HuggingFace fallback ──────────────────────────────────────────────────
     if hf_model is None or hf_tokenizer is None:
@@ -570,7 +581,11 @@ def generate_answer(
             "Ollama is unavailable and no HF model is loaded. "
             "Call _ensure_model_loaded() before inference."
         )
-    print(f"  [inference] Using HuggingFace ({model_cfg['hf_repo']})")
+    warn_key = f"hf:{model_cfg['hf_repo']}"
+    if warn_key not in _inference_warned:
+        print(f"  [inference] Using HuggingFace ({model_cfg['hf_repo']})")
+        _inference_warned.add(warn_key)
+
     answer, thinking = generate_answer_hf(
         prompt, hf_model, hf_tokenizer, model_cfg, think=think
     )
