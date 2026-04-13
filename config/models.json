@@ -95,7 +95,7 @@
             "license": "Apache 2.0",
             "gated": false,
             "hf_token_required": false
-        },
+        }
     ],
     "excluded_models": [
         {
