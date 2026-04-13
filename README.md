@@ -171,7 +171,6 @@ flowchart TD
 
 Clinical vignettes score lower in raw FAISS retrieval because incidental language ("A 45-year-old man presents with...") dilutes the embedding. NER rewriting isolates the DISEASE and CHEMICAL tokens before querying, improving retrieval scores by +0.005–0.006 on biomedical embeddings.
 
-
 ## 2. Repository Structure
 
 ```plain
