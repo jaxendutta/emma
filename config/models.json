@@ -237,7 +237,7 @@
                 true,
                 false
             ],
-            "n_eval": 50,
+            "n_eval": 50
         },
         {
             "embedding": "qwen3-embedding-0.6b",
@@ -246,7 +246,7 @@
                 true,
                 false
             ],
-            "n_eval": 100,
+            "n_eval": 100
         },
         {
             "embedding": "octen-embedding-0.6b",
@@ -255,7 +255,7 @@
                 true,
                 false
             ],
-            "n_eval": 100,
+            "n_eval": 100
         }
-    ],
+    ]
 }
