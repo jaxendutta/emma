@@ -20,7 +20,7 @@ EMMA is a conversational medical study agent for USMLE preparation. In explanati
   - [Group 23](#group-23)
   - [Overview](#overview)
   - [Contents](#contents)
-  - [1. Pipeline](#1-pipeline)
+  - [1. Architecture Pipeline](#1-architecture-pipeline)
   - [2. Repository Structure](#2-repository-structure)
   - [3. Notebooks](#3-notebooks)
   - [4. Data](#4-data)
@@ -71,18 +71,102 @@ EMMA is a conversational medical study agent for USMLE preparation. In explanati
   - [14. Key Design Decisions](#14-key-design-decisions)
   - [References](#references)
 
-## 1. Pipeline
+## 1. Architecture Pipeline
 
-```plain
-User query
-  -> SpaCy NER (en_ner_bc5cdr_md)     extract DISEASE + CHEMICAL entities
-  -> Query rewriting                   entity string replaces raw vignette
-  -> FAISS retrieval                   top-k textbook chunks + confidence bands
-  -> TF-IDF + LinearSVC classifier     specialty label for prompt routing
-  -> Qwen3-4B-Thinking-2507            grounded answer generation (4-bit, local)
-       |
-       └-> Ollama (fast path, if running locally)
-       └-> HuggingFace 4-bit nf4 (fallback, Colab T4)
+```mermaid
+flowchart TD
+    U(["User Query"])
+
+    subgraph NER ["NB5: NER + Query Rewriting"]
+        direction TB
+        N1["SpaCy en_ner_bc5cdr_md
+        extract DISEASE + CHEMICAL entities"]
+        N2{"Entities
+        found?"}
+        N3["Rewritten query
+        = entity string"]
+        N4["Raw query
+        fallback: 5.8% of questions"]
+        N1 --> N2
+        N2 -->|yes| N3
+        N2 -->|no| N4
+    end
+
+    subgraph VS ["NB01: Vectorstore"]
+        direction TB
+        TB[(18 Medical Textbooks
+        36,723 chunks · 1024-dim)]
+        V1["FAISS IndexFlatIP
+        Octen-Embedding-0.6B"]
+        V2{"Score band?"}
+        V3["high ≥ 0.70"]
+        V4["medium 0.55–0.70
+        flagged in prompt"]
+        V5["low < 0.55
+        dropped"]
+        TB -.->|"Octen-Embedding-0.6B
+        at build time"| V1
+        V1 --> V2
+        V2 --> V3
+        V2 --> V4
+        V2 --> V5
+    end
+
+    subgraph CLS ["NB02: Classifier"]
+        C1["TF-IDF Bigrams + LinearSVC
+        19 specialty labels
+        F1 = 0.69 · κ = 0.66"]
+    end
+  
+    subgraph CLU ["NB03: Clustering"]
+        K1["BERTopic
+        39 fine-grained topics
+        C_v = 0.475"]
+    end
+
+    subgraph LLM ["LLM Inference"]
+        direction TB
+        MC[(config/models.json
+        benchmark_combinations)]
+        L4["Structured prompt:
+        - retrieved passages
+        - specialty context
+        - confidence hedging"]
+        L1{"Ollama
+        running?"}
+        L2["Ollama
+        qwen3:4b-thinking-2507
+        fast · no GPU needed"]
+        L3["HuggingFace
+        Qwen3-4B-Thinking-2507
+        4-bit nf4 · Colab T4"]
+        MC -.->|model selection| L1
+        L4 --> L1
+        L1 -->|yes| L2
+        L1 -->|no| L3
+    end
+
+    subgraph CRS ["NB6: Recommender System"]
+        R1["KNNBasic CF
+        per-specialty accuracy tracking
+        HR@10 = 0.740"]
+    end
+
+    A(["Answer grounded
+    in textbook passages"])
+
+    U --> N1
+    N3 --> V1
+    N4 --> V1
+    U --> C1
+    C1 --> CLU
+    V3 --> L4
+    V4 --> L4
+    C1 --> L4
+    CLU --> L4
+    L2 --> A
+    L3 --> A
+    A --> CRS
 ```
 
 Clinical vignettes score lower in raw FAISS retrieval because incidental language ("A 45-year-old man presents with...") dilutes the embedding. NER rewriting isolates the DISEASE and CHEMICAL tokens before querying, improving retrieval scores by +0.005–0.006 on biomedical embeddings.
