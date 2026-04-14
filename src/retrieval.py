@@ -647,6 +647,8 @@ class EMMARetriever:
         self.hf_token      = hf_token
         self.ollama_url    = ollama_url
 
+        self._inference_warned: set[str] = set()
+
         # Lazy-loaded HF LLM (only populated when Ollama is unavailable)
         self._hf_model     = None
         self._hf_tokenizer = None
