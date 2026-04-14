@@ -120,8 +120,8 @@ flowchart TD
   
     subgraph CLU ["NB03: Clustering"]
         K1["BERTopic
-        39 fine-grained topics
-        C_v = 0.475"]
+        55 fine-grained topics
+        C_v = 0.5088"]
     end
 
     subgraph LLM ["LLM Inference"]
@@ -384,17 +384,17 @@ Mean inter-category cosine similarity: 0.72 (vs. ~0.95 in the A1 corpus), confir
 
 ### 8.2. Method
 
-BERTopic (MiniLM-L6-v2 embeddings → UMAP → HDBSCAN). Auto-discovers K=39 topics.
+BERTopic (MiniLM-L12-v2 embeddings → UMAP → HDBSCAN). Auto-discovers K=55 topics.
 
 | #   | Method                | Cohen's $\kappa$ | Silhouette | $C_v$ coherence |
 | --- | --------------------- | ---------------: | ---------: | --------------: |
-| 1   | TF-IDF + GMM          |            0.014 |          — |               — |
-| 2   | Embeddings + Spectral |            0.024 |      0.064 |               — |
-| 3   | BERTopic              |           -0.020 |      0.072 |           0.475 |
+| 1   | TF-IDF + GMM          |           0.0193 |          — |               — |
+| 2   | Embeddings + Spectral |           0.0192 |     0.0605 |               — |
+| 3   | BERTopic              |          -0.0117 |      0.069 |          0.5088 |
 
 ### 8.3. Interpretation of Near-Zero $\kappa$
 
-BERTopic discovers 39 fine-grained topic groups that do not align one-to-one with 19 specialty labels. This is granularity mismatch, not failure. C_v = 0.475 confirms internal topic coherence. Topic 0 (chest/cardiac terms) is 70.6% Internal Medicine; Topic 4 (gestation/pregnancy) is 72.4% Obstetrics. The 36% outlier rate reflects short question stems (~20 words) that don't form dense HDBSCAN clusters — these fall back to specialty-only routing.
+BERTopic discovers 55 fine-grained topic groups that do not align one-to-one with 19 specialty labels. This is granularity mismatch, not failure. C_v = 0.5088 confirms internal topic coherence. Topic 0 (chest/cardiac terms) is 70.6% Internal Medicine; Topic 4 (gestation/pregnancy) is 72.4% Obstetrics. The 34.7% outlier rate reflects short question stems (~20 words) that don't form dense HDBSCAN clusters — these fall back to specialty-only routing.
 
 ## 9. Recommender System
 
