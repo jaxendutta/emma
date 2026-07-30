@@ -60,12 +60,12 @@ async function loadReadme() {
     const loadingEl = document.getElementById('readme-loading');
     const contentEl = document.getElementById('readme-content');
     try {
-        let res = await fetch('./README.md');
+        let res = await fetch('../README.md');
         if (!res.ok) {
-            res = await fetch('README.md');
+            res = await fetch('./README.md');
         }
         if (!res.ok) {
-            res = await fetch('/README.md');
+            res = await fetch('https://raw.githubusercontent.com/jaxendutta/emma/main/README.md');
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}: Not found`);
         const text = await res.text();

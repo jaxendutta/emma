@@ -1,23 +1,23 @@
 # EMMA: Emergency Medicine Mentoring Agent
 
-## Group 23
+## Collaborators
 
-| Member              | Email                 | ID        |
-| ------------------- | --------------------- | --------- |
-| Jaxen Anirban Dutta | <adutt042@uottawa.ca> | 300101437 |
-| Acassia Arnaud      | <aarna035@uottawa.ca> | 300466030 |
-| Yifei Yu            | <yyu039@uottawa.ca>   | 8719434   |
+| Member              | Email                 | GitHub          |
+| ------------------- | --------------------- | --------------- |
+| Jaxen Anirban Dutta | <adutt042@uottawa.ca> | [jaxendutta](https://github.com/jaxendutta) |
+| Acassia Arnaud      | <aarna035@uottawa.ca> | [acassiaarnaud](https://github.com/acassiaarnaud) |
+| Yifei Yu            | <yyu039@uottawa.ca>   | [yifeiyu](https://github.com/yifeiyu) |
 
 ## Overview
 
 EMMA is a conversational medical study agent for USMLE preparation. In explanation mode, students pose clinical questions in natural language and receive responses grounded in passages from 18 standard medical textbooks. In quiz mode, EMMA presents authentic USMLE-style questions, evaluates answers, and tracks per-specialty performance. A collaborative filtering recommender steers students toward their weakest areas.
 
-**Live client:** [emma.vercel.app](https://emma.vercel.app) *(static client + Dialogflow chatbot)*
+**Live Client:** [emma.anirban.ca](https://emma.anirban.ca)
 
 ## Contents
 
 - [EMMA: Emergency Medicine Mentoring Agent](#emma-emergency-medicine-mentoring-agent)
-  - [Group 23](#group-23)
+  - [Collaborators](#collaborators)
   - [Overview](#overview)
   - [Contents](#contents)
   - [1. Architecture Pipeline](#1-architecture-pipeline)
