@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: emma
+    name: emma-webhook
     runtime: docker
     plan: free
     dockerfilePath: Dockerfile
