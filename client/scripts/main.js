@@ -278,16 +278,38 @@ window.renderSpecialtiesGrid = function () {
 window.addEventListener('DOMContentLoaded', function () {
     window.renderSpecialtiesGrid();
 
-    // ── Native Floating Chat Drawer Controller ───────────────────────────────
+    // ── Native Floating Chat Drawer & Teaser Controller ─────────────────────
     const fab = document.getElementById('emma-fab');
     const drawer = document.getElementById('emma-drawer');
     const closeBtn = document.getElementById('emma-drawer-close');
+    const teaser = document.getElementById('emma-teaser');
+    const teaserClose = document.getElementById('emma-teaser-close');
     const form = document.getElementById('emma-input-form');
     const input = document.getElementById('emma-input-field');
     const messages = document.getElementById('emma-messages');
 
-    if (fab && drawer) {
-        fab.addEventListener('click', () => drawer.classList.toggle('emma-hidden'));
+    function openDrawer() {
+        if (drawer) drawer.classList.remove('emma-hidden');
+        if (teaser) teaser.classList.add('emma-hidden');
+    }
+
+    function toggleDrawer() {
+        if (!drawer) return;
+        const isHidden = drawer.classList.contains('emma-hidden');
+        if (isHidden) {
+            openDrawer();
+        } else {
+            drawer.classList.add('emma-hidden');
+        }
+    }
+
+    if (fab) fab.addEventListener('click', toggleDrawer);
+    if (teaser) teaser.addEventListener('click', openDrawer);
+    if (teaserClose) {
+        teaserClose.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (teaser) teaser.classList.add('emma-hidden');
+        });
     }
     if (closeBtn && drawer) {
         closeBtn.addEventListener('click', () => drawer.classList.add('emma-hidden'));
@@ -310,7 +332,7 @@ window.addEventListener('DOMContentLoaded', function () {
             // Append Typing Indicator
             const typingDiv = document.createElement('div');
             typingDiv.className = 'emma-msg emma-msg-typing';
-            typingDiv.innerHTML = `EMMA is thinking<span class="emma-typing-dots"><span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span>`;
+            typingDiv.textContent = 'EMMA is thinking...';
             messages.appendChild(typingDiv);
             messages.scrollTop = messages.scrollHeight;
 

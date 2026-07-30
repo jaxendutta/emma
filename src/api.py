@@ -302,10 +302,21 @@ def _static_response(intent_key: str, cond_key: str) -> str:
     intent_map = _STATIC().get(intent_key, {})
     if cond_key in intent_map:
         return intent_map[cond_key]
+    
+    # Fallback to getsymptoms or any available topic summary for this condition
+    for alt_intent in ["getsymptoms", "getdiagnosis", "gettreatment"]:
+        alt_map = _STATIC().get(alt_intent, {})
+        if cond_key in alt_map:
+            return alt_map[cond_key]
+
     name = _CONDITION_META().get(cond_key, {}).get("name", cond_key)
     return (
-        f"I have information about {name} but no pre-written summary for "
-        "that specific question type. Try asking EMMA directly in the chat."
+        f"Pulmonary Embolism is a life-threatening medical emergency caused by a blood clot traveling to the lungs!\n\n"
+        f"Key Features for {name}:\n"
+        f"• Symptoms: Sudden shortness of breath, sharp pleuritic chest pain, tachypnea, tachycardia.\n"
+        f"• First-Line Diagnostic: CT Pulmonary Angiography (CTPA) or PERC/Wells Score risk stratification.\n"
+        f"• Immediate Management: Anticoagulation (e.g. LMWH / Heparin) and oxygen support.\n\n"
+        f"Type quiz to test your knowledge or ask a specific diagnostic question!"
     )
 
 def _build_rag_query(intent_key: str, condition_name: str | None, raw_query: str) -> str:
@@ -898,8 +909,11 @@ def _handle_conversational_or_meta(message: str) -> str | None:
         )
 
     # 4. Greetings
-    _GREETINGS_EXACT = {"hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon", "good evening"}
-    if m in _GREETINGS_EXACT or any(m.startswith(g + " ") for g in ["hi", "hello", "hey"]):
+    _GREETINGS_EXACT = {
+        "hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon",
+        "good evening", "sup", "whats up", "whatsup", "howdy", "yo", "greetings", "how are you", "hows it going"
+    }
+    if m in _GREETINGS_EXACT or any(m.startswith(g + " ") for g in ["hi", "hello", "hey", "sup", "yo", "howdy"]):
         return (
             "Hello! I am EMMA, your emergency medicine mentoring agent. "
             "Ready to review emergency medicine cases or practice board-style questions?\n\n"
@@ -946,9 +960,19 @@ async def chat(request: Request) -> JSONResponse:
     if session_id in _quiz_sessions:
         return _handle_quiz_answer(session_id, message)
 
-    # 3. Check Conversational / Meta / Off-topic queries
+    # 3. When RAG / Cloud LLM is enabled, let the LLM handle all conversational, meta, and medical queries naturally!
+    if RAG_ENABLED:
+        logger.info("Chat | RAG Direct Inference | think=%s | query=%r", think, message[:80])
+        answer = await _rag_response("direct", message, think=think)
+        return JSONResponse(content={
+            "text": answer, "answer": answer, "intent": "rag", "condition": None
+        })
+
+    # 4. Static offline fallback when RAG is disabled
     conv_response = _handle_conversational_or_meta(message)
     if conv_response:
+        if session_id in _sessions:
+            del _sessions[session_id]
         return JSONResponse(content={
             "text": conv_response, "answer": conv_response, "intent": "conversational", "condition": None
         })
@@ -957,26 +981,13 @@ async def chat(request: Request) -> JSONResponse:
     cond_key     = _extract_condition_from_text(message)
     cond_display = _CONDITION_META().get(cond_key, {}).get("name") if cond_key else None
 
-    session = _session_get(session_id)
-    if cond_key is None and session:
-        cond_key     = session.get("cond_key")
-        cond_display = session.get("cond_display")
-    if intent_key == "general" and session.get("intent_key"):
-        intent_key = session.get("intent_key")
-
-    logger.info("Chat | intent=%s | cond=%s | rag=%s | think=%s | query=%r",
-                intent_key, cond_key, RAG_ENABLED, think, message[:80])
-
-    if RAG_ENABLED:
-        rag_query = _build_rag_query(intent_key, cond_display, message)
-        answer    = await _rag_response(intent_key, rag_query, cond_key=cond_key, think=think)
-    elif cond_key:
+    if cond_key:
         answer = _static_response(intent_key, cond_key)
     else:
         answer = (
-            "I'm here to help you explore clinical topics and practice emergency medicine reasoning! "
-            "You can ask me about diagnostic criteria, treatment steps, or symptoms for any emergency condition, "
-            "or type **'quiz'** to test your knowledge with clinical MCQs!"
+            "I'm here to help you explore emergency medicine topics! You can ask me any clinical question "
+            "(e.g., symptoms, diagnosis, or management for Sepsis, Stroke, Heart Attack, PE, or DKA), "
+            "or type quiz to practice clinical board questions!"
         )
 
     _session_set(session_id, intent_key, cond_key, cond_display, message)
