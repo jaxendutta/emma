@@ -47,6 +47,7 @@ import logging
 import re
 import random
 import os
+import functools
 import time as _time
 import json as _json
 from concurrent.futures import ThreadPoolExecutor
@@ -237,31 +238,25 @@ def _config_path(filename: str):
         return _pl.Path(__file__).resolve().parent.parent / "config" / filename
 
 
+@functools.lru_cache(maxsize=1)
 def _load_conditions_config() -> dict:
-    if not hasattr(_load_conditions_config, "_cache"):
-        _load_conditions_config._cache = _json.loads(
-            _config_path("conditions.json").read_text(encoding="utf-8"))
-    return _load_conditions_config._cache
+    return _json.loads(_config_path("conditions.json").read_text(encoding="utf-8"))
 
 
+@functools.lru_cache(maxsize=1)
 def _load_responses_config() -> dict:
-    if not hasattr(_load_responses_config, "_cache"):
-        _load_responses_config._cache = _json.loads(
-            _config_path("responses.json").read_text(encoding="utf-8"))
-    return _load_responses_config._cache
+    return _json.loads(_config_path("responses.json").read_text(encoding="utf-8"))
 
 
+@functools.lru_cache(maxsize=1)
 def _load_intents_config() -> dict:
-    if not hasattr(_load_intents_config, "_cache"):
-        _load_intents_config._cache = _json.loads(
-            _config_path("intents.json").read_text(encoding="utf-8"))
-    return _load_intents_config._cache
+    return _json.loads(_config_path("intents.json").read_text(encoding="utf-8"))
 
 
 def _get_condition_meta() -> dict:
     return _load_conditions_config()["conditions"]
 
-def _get_condition_aliases() -> dict:
+def _get_condition_aliases() -> dict[str, str]:
     return {k: v for k, v in _load_conditions_config()["aliases"].items()
             if not k.startswith("_")}
 
@@ -271,9 +266,9 @@ def _get_static() -> dict:
 def _get_intents_cfg() -> dict:
     return _load_intents_config()
 
-def _CONDITION_META():    return _get_condition_meta()
-def _CONDITION_ALIASES(): return _get_condition_aliases()
-def _STATIC():            return _get_static()
+def _CONDITION_META():                  return _get_condition_meta()
+def _CONDITION_ALIASES() -> dict[str, str]: return _get_condition_aliases()
+def _STATIC():                          return _get_static()
 
 
 # ── Normalisation helpers ─────────────────────────────────────────────────────
@@ -534,7 +529,7 @@ def _get_random_question() -> dict:
         }
     return random.choice(questions)
 
-def _start_quiz(session_id: str, specialty: str, show_intro: bool = True) -> JSONResponse:
+def _start_quiz(session_id: str, specialty: str | None = None, show_intro: bool = True) -> JSONResponse:
     q = _get_random_question()
     opts = "\n\n\n".join([f"{k}) {v}" for k, v in q.get("options", {}).items()])
     letters = ", ".join(q.get("options", {}).keys())
@@ -740,7 +735,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
 
     query_clean = re.sub(r"[^\w\s]", "", query_lower).strip()
 
-    # Greetings handler — warm, natural, open-ended clinical AI prompt
+    # Greetings handler
     if query_clean in _GREETING_PHRASES or any(query_clean.startswith(g + " ") for g in _GREETING_PHRASES):
         return JSONResponse(content=_build_response(
             "Hi there! I am EMMA (Emergency Medicine Mentoring Agent). "
