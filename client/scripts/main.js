@@ -310,7 +310,7 @@ window.addEventListener('DOMContentLoaded', function () {
             // Append Typing Indicator
             const typingDiv = document.createElement('div');
             typingDiv.className = 'emma-msg emma-msg-typing';
-            typingDiv.textContent = 'EMMA is thinking...';
+            typingDiv.innerHTML = `EMMA is thinking<span class="emma-typing-dots"><span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></span>`;
             messages.appendChild(typingDiv);
             messages.scrollTop = messages.scrollHeight;
 
@@ -351,17 +351,26 @@ window.addEventListener('DOMContentLoaded', function () {
                     messages.removeChild(typingDiv);
                 }
 
-                // Append AI Response
-                const aiDiv = document.createElement('div');
-                aiDiv.className = 'emma-msg emma-msg-ai';
+                // Append AI Response (split into individual speech bubbles per paragraph)
                 const answerText = data.answer || data.text || "Sorry, I didn't receive a valid response.";
-                if (window.marked) {
-                    aiDiv.innerHTML = window.marked.parse(answerText);
-                } else {
-                    aiDiv.textContent = answerText;
+                const paragraphs = answerText.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+                if (paragraphs.length === 0) {
+                    paragraphs.push(answerText);
                 }
-                messages.appendChild(aiDiv);
-                messages.scrollTop = messages.scrollHeight;
+
+                paragraphs.forEach((para, idx) => {
+                    setTimeout(() => {
+                        const aiDiv = document.createElement('div');
+                        aiDiv.className = 'emma-msg emma-msg-ai emma-pop-in';
+                        if (window.marked) {
+                            aiDiv.innerHTML = window.marked.parse(para);
+                        } else {
+                            aiDiv.textContent = para;
+                        }
+                        messages.appendChild(aiDiv);
+                        messages.scrollTop = messages.scrollHeight;
+                    }, idx * 280);
+                });
             } catch (err) {
                 if (messages.contains(typingDiv)) {
                     messages.removeChild(typingDiv);

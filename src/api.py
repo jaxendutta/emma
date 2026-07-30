@@ -527,7 +527,15 @@ def _get_random_question() -> dict:
             "answer": "C",
             "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
         }
-    return random.choice(questions)
+def _build_response(text: str) -> dict:
+    """Build standardized response dict containing text and Dialogflow compatibility keys."""
+    return {
+        "text": text,
+        "answer": text,
+        "fulfillmentText": text,
+        "fulfillmentMessages": [{"text": {"text": [text]}}],
+    }
+
 
 def _start_quiz(session_id: str, specialty: str | None = None, show_intro: bool = True) -> JSONResponse:
     q = _get_random_question()
@@ -738,17 +746,17 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     # Greetings handler
     if query_clean in _GREETING_PHRASES or any(query_clean.startswith(g + " ") for g in _GREETING_PHRASES):
         return JSONResponse(content=_build_response(
-            "Hi there! I am EMMA (Emergency Medicine Mentoring Agent). "
+            "Hi there! I am EMMA, your emergency medicine mentoring agent. "
             "I'm here to help you master emergency medicine concepts, review clinical guidelines, "
             "and practice USMLE-style diagnostic questions.\n\n"
             "What medical topic or question would you like to explore today? "
-            "You can ask me any clinical question, or type **'quiz'** to test your knowledge!"
+            "You can ask me any clinical question, or type quiz to test your knowledge!"
         ))
 
     # Thanks handler
     if query_clean in _THANKS_PHRASES:
         return JSONResponse(content=_build_response(
-            "You're welcome! Let me know if you have any more medical questions or type **'quiz'** to practice another question."
+            "You're welcome! Let me know if you have any more medical questions or type quiz to practice another question."
         ))
 
     is_vague = any(query_clean == p or query_clean.startswith(p) for p in _VAGUE_PHRASES) or len(query_clean.split()) <= 3
@@ -761,7 +769,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
         elif is_vague and (query_clean in _AFFIRMATIVE_PHRASES or any(query_clean.startswith(a) for a in _AFFIRMATIVE_PHRASES)):
             return JSONResponse(content=_build_response(
                 "Awesome! Let me know what you'd like to review. You can ask me a question like "
-                "**'What are the symptoms of sepsis?'** or **'How is a stroke diagnosed?'**, or type **'quiz'** to practice!"
+                "What are the symptoms of sepsis? or How is a stroke diagnosed?, or type quiz to practice!"
             ))
         elif not is_vague and raw_query and not RAG_ENABLED:
             # They asked a full question about an unknown condition while in static mode
@@ -790,7 +798,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     if intent_key == "unsupported_condition":
         cond_list = ", ".join(m["name"] for m in _CONDITION_META().values())
         answer = ("I am ready to answer your medical questions! For instant static review, "
-                  "I have detailed summaries for these acute conditions:\n\n" + cond_list + "\n\nFeel free to ask about any of these or type **'quiz'** to practice!")
+                  "I have detailed summaries for these acute conditions:\n\n" + cond_list + "\n\nFeel free to ask about any of these or type quiz to practice!")
         return JSONResponse(content=_build_response(answer))
 
     elif intent_key in HANDLED_INTENTS:
@@ -830,8 +838,8 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
         answer = (
             "I want to make sure I give you the best medical answer! "
             "You can ask me about symptoms, diagnosis, treatment, risk factors, or clinical differentiation for: "
-            "**Sepsis, Heart Attack, Stroke, Anaphylaxis, Pulmonary Embolism, Meningitis, DKA, or Appendicitis**.\n\n"
-            "Try asking: *'What are the symptoms of sepsis?'* or type **'quiz'** to test your knowledge!"
+            "Sepsis, Heart Attack, Stroke, Anaphylaxis, Pulmonary Embolism, Meningitis, DKA, or Appendicitis.\n\n"
+            "Try asking: What are the symptoms of sepsis? or type quiz to test your knowledge!"
         )
         return JSONResponse(content=_build_response(answer))
 
@@ -863,7 +871,7 @@ def _handle_conversational_or_meta(message: str) -> str | None:
     # 1. Age / Birthday
     if any(p in m for p in ["how old are you", "what is your age", "your birthday", "when were you born"]):
         return (
-            "I'm EMMA, a digital Emergency Medicine AI mentor! As a virtual AI assistant, I don't have a human age or birthday, "
+            "I'm EMMA, your emergency medicine mentoring agent! As a virtual AI assistant, I don't have a human age or birthday, "
             "but I am continuously loaded with up-to-date emergency medicine guidelines, USMLE medical textbooks, and clinical case questions.\n\n"
             "What medical topic or condition would you like to review today?"
         )
@@ -871,18 +879,18 @@ def _handle_conversational_or_meta(message: str) -> str | None:
     # 2. Identity / Who are you
     if any(p in m for p in ["who are you", "what is your name", "what are you", "tell me about yourself"]):
         return (
-            "I am EMMA — Emergency Medicine Mentoring Agent! I'm designed to help medical students, residents, and clinicians "
+            "I am EMMA, your emergency medicine mentoring agent! I'm designed to help medical students, residents, and clinicians "
             "review emergency medicine concepts, explore diagnostic criteria, and test clinical reasoning with MCQs.\n\n"
-            "You can ask me any medical question, or type **'quiz'** to practice clinical board questions!"
+            "You can ask me any medical question, or type quiz to practice clinical board questions!"
         )
 
     # 3. Capabilities / What can you do
     if any(p in m for p in ["what can you do", "help me", "how do you work", "features", "what do you do"]):
         return (
             "Here is what I can help you with:\n\n"
-            "1. **Clinical Q&A**: Ask about symptoms, diagnostic algorithms, or management for any emergency condition (e.g. Sepsis, Stroke, Heart Attack, Anaphylaxis, Trauma).\n"
-            "2. **Clinical Practice MCQs**: Type **'quiz'** to take USMLE-style emergency medicine questions and get explanations.\n"
-            "3. **Differential Diagnosis**: Ask how to differentiate overlapping conditions (e.g. DKA vs HHS, STEMI vs Pericarditis).\n\n"
+            "1. Clinical Q&A: Ask about symptoms, diagnostic algorithms, or management for any emergency condition (e.g. Sepsis, Stroke, Heart Attack, Anaphylaxis, Trauma).\n"
+            "2. Clinical Practice MCQs: Type quiz to take USMLE-style emergency medicine questions and get explanations.\n"
+            "3. Differential Diagnosis: Ask how to differentiate overlapping conditions (e.g. DKA vs HHS, STEMI vs Pericarditis).\n\n"
             "What would you like to start with?"
         )
 
@@ -890,16 +898,16 @@ def _handle_conversational_or_meta(message: str) -> str | None:
     _GREETINGS_EXACT = {"hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon", "good evening"}
     if m in _GREETINGS_EXACT or any(m.startswith(g + " ") for g in ["hi", "hello", "hey"]):
         return (
-            "Hello! I am EMMA (Emergency Medicine Mentoring Agent). "
+            "Hello! I am EMMA, your emergency medicine mentoring agent. "
             "Ready to review emergency medicine cases or practice board-style questions?\n\n"
-            "Ask me any clinical question, or type **'quiz'** to start a practice question!"
+            "Ask me any clinical question, or type quiz to start a practice question!"
         )
 
     # 5. Off-topic redirection (weather, sports, coding, movies, etc.)
     _OFF_TOPIC_KEYWORDS = ["weather", "sports", "football", "basketball", "movie", "film", "song", "recipe", "python code", "stock market"]
     if any(k in m for k in _OFF_TOPIC_KEYWORDS):
         return (
-            "As an Emergency Medicine AI mentor, I specialize strictly in clinical medical topics, emergency protocols, "
+            "As EMMA, your emergency medicine mentoring agent, I specialize strictly in clinical medical topics, emergency protocols, "
             "and diagnostic board prep! I can't help with off-topic subjects like that, but I'm ready for any medical question or quiz you'd like to try."
         )
 
