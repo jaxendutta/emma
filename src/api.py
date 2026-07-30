@@ -732,7 +732,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     # Greetings handler
     if query_clean in _GREETING_PHRASES or any(query_clean.startswith(g + " ") for g in _GREETING_PHRASES):
         return JSONResponse(content=_build_response(
-            "Hi there! I'm EMMA, your Emergency Medicine Mentoring Agent. 🩺 "
+            "Hi there! I'm EMMA, your Emergency Medicine Mentoring Agent. "
             "Ask me about symptoms, diagnosis, treatment, or differentiation for emergency conditions "
             "(e.g., Sepsis, Stroke, Heart Attack), or type **'quiz'** to test your knowledge!"
         ))
@@ -740,7 +740,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     # Thanks handler
     if query_clean in _THANKS_PHRASES:
         return JSONResponse(content=_build_response(
-            "You're welcome! 🩺 Let me know if you have any more medical questions or type **'quiz'** to practice another question."
+            "You're welcome! Let me know if you have any more medical questions or type **'quiz'** to practice another question."
         ))
 
     is_vague = any(query_clean == p or query_clean.startswith(p) for p in _VAGUE_PHRASES) or len(query_clean.split()) <= 3
@@ -752,7 +752,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             intent_key = session.get("intent_key", intent_key)
         elif is_vague and (query_clean in _AFFIRMATIVE_PHRASES or any(query_clean.startswith(a) for a in _AFFIRMATIVE_PHRASES)):
             return JSONResponse(content=_build_response(
-                "Awesome! Let me know what you'd like to review. 🩺 You can ask me a question like "
+                "Awesome! Let me know what you'd like to review. You can ask me a question like "
                 "**'What are the symptoms of sepsis?'** or **'How is a stroke diagnosed?'**, or type **'quiz'** to practice!"
             ))
         elif not is_vague and raw_query and not RAG_ENABLED:
@@ -800,7 +800,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             label = cond_display or "that"
             return JSONResponse(content=_build_response(
                 f"Looking up {label} in the medical textbooks… "
-                "Send me any message in a moment and I'll have your answer ready! 📚"
+                "Send me any message in a moment and I'll have your answer ready!"
             ))
         else:
             if cond_key is not None:
@@ -820,7 +820,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
 
     else:
         answer = (
-            "I want to make sure I give you the best medical answer! 🩺 "
+            "I want to make sure I give you the best medical answer! "
             "You can ask me about symptoms, diagnosis, treatment, risk factors, or clinical differentiation for: "
             "**Sepsis, Heart Attack, Stroke, Anaphylaxis, Pulmonary Embolism, Meningitis, DKA, or Appendicitis**.\n\n"
             "Try asking: *'What are the symptoms of sepsis?'* or type **'quiz'** to test your knowledge!"
@@ -859,6 +859,8 @@ async def chat(request: Request) -> JSONResponse:
     try:
         body       = await request.json()
         message    = body.get("message", "").strip()
+        if not message and "messages" in body and isinstance(body["messages"], list) and body["messages"]:
+            message = body["messages"][-1].get("text", "").strip()
         session_id = body.get("session_id", "chat-default")
         think      = bool(body.get("think", False))
     except Exception:
@@ -896,7 +898,7 @@ async def chat(request: Request) -> JSONResponse:
 
     _session_set(session_id, intent_key, cond_key, cond_display, message)
     return JSONResponse(content={
-        "answer": answer, "intent": intent_key, "condition": cond_display
+        "text": answer, "answer": answer, "intent": intent_key, "condition": cond_display
     })
 
 

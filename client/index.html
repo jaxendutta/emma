@@ -13,8 +13,9 @@
   <link rel="stylesheet" href="styles/style.css" />
   <link rel="stylesheet" href="styles/nav.css" />
   <link rel="stylesheet" href="styles/graph.css" />
-  <link rel="icon" type="image/x-icon" href="assets/logo.jpg">
-  <script src="https://www.gstatic.com/dialogflow-console/fast/messenger/bootstrap.js?v=1"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 </head>
 
 <body>
@@ -128,8 +129,38 @@
     </div>
   </div>
 
-  <df-messenger intent="WELCOME" chat-title="EMMA" agent-id="449acc2d-a63d-4773-b4da-090d71bc0b52" language-code="en">
-  </df-messenger>
+  <!-- FLOATING CHAT FAB & DRAWER -->
+  <button id="emma-fab" class="emma-fab" title="Chat with EMMA" aria-label="Open Chat">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+    </svg>
+  </button>
+
+  <div id="emma-drawer" class="emma-drawer emma-hidden">
+    <div class="emma-drawer-header">
+      <div class="emma-drawer-title">
+        <div class="emma-title-text">EMMA</div>
+        <div class="emma-subtitle">Emergency Medicine Mentoring Agent</div>
+      </div>
+      <button id="emma-drawer-close" class="emma-drawer-close" aria-label="Close Chat">&times;</button>
+    </div>
+
+    <div id="emma-messages" class="emma-messages">
+      <div class="emma-msg emma-msg-ai">
+        Hi there! I am EMMA, your Emergency Medicine Mentoring Agent. Ask me about emergency conditions (e.g. Sepsis, Stroke, Heart Attack) or type <strong>quiz</strong> to practice!
+      </div>
+    </div>
+
+    <form id="emma-input-form" class="emma-input-form">
+      <input type="text" id="emma-input-field" placeholder="Ask EMMA or type 'quiz'..." autocomplete="off" />
+      <button type="submit" class="emma-send-btn" aria-label="Send">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </form>
+  </div>
 
   <!-- ONTOLOGY GRAPH TAB -->
   <div id="tab-graph" class="panel">

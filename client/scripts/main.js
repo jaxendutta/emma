@@ -97,6 +97,19 @@ async function loadReadme() {
         loadingEl.style.display = 'none';
         contentEl.innerHTML = html;
 
+        // Render KaTeX LaTeX math expressions ($\kappa$, etc.)
+        if (window.renderMathInElement) {
+            window.renderMathInElement(contentEl, {
+                delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '$', right: '$', display: false},
+                    {left: '\\(', right: '\\)', display: false},
+                    {left: '\\[', right: '\\]', display: true}
+                ],
+                throwOnError: false
+            });
+        }
+
         // Wrap tables in scroll + fade containers
         contentEl.querySelectorAll('table').forEach(table => {
             if (!table.parentElement.classList.contains('table-scroll')) {
@@ -264,4 +277,87 @@ window.renderSpecialtiesGrid = function () {
 
 window.addEventListener('DOMContentLoaded', function () {
     window.renderSpecialtiesGrid();
+
+    // ── Native Floating Chat Drawer Controller ───────────────────────────────
+    const fab = document.getElementById('emma-fab');
+    const drawer = document.getElementById('emma-drawer');
+    const closeBtn = document.getElementById('emma-drawer-close');
+    const form = document.getElementById('emma-input-form');
+    const input = document.getElementById('emma-input-field');
+    const messages = document.getElementById('emma-messages');
+
+    if (fab && drawer) {
+        fab.addEventListener('click', () => drawer.classList.toggle('emma-hidden'));
+    }
+    if (closeBtn && drawer) {
+        closeBtn.addEventListener('click', () => drawer.classList.add('emma-hidden'));
+    }
+
+    if (form && input && messages) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text) return;
+
+            // Append User Message
+            const userDiv = document.createElement('div');
+            userDiv.className = 'emma-msg emma-msg-user';
+            userDiv.textContent = text;
+            messages.appendChild(userDiv);
+            input.value = '';
+            messages.scrollTop = messages.scrollHeight;
+
+            // Append Typing Indicator
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'emma-msg emma-msg-typing';
+            typingDiv.textContent = 'EMMA is thinking...';
+            messages.appendChild(typingDiv);
+            messages.scrollTop = messages.scrollHeight;
+
+            // Fetch from /chat API
+            try {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const apiUrl = isLocal ? 'http://localhost:8080/chat' : 'https://emma-webhook.onrender.com/chat';
+                
+                let sid = window.sessionStorage.getItem('emma_sid');
+                if (!sid) {
+                    sid = 'emma-session-' + Math.random().toString(36).substring(2, 9);
+                    window.sessionStorage.setItem('emma_sid', sid);
+                }
+
+                const res = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, session_id: sid })
+                });
+                const data = await res.json();
+                
+                // Remove typing indicator
+                if (messages.contains(typingDiv)) {
+                    messages.removeChild(typingDiv);
+                }
+
+                // Append AI Response
+                const aiDiv = document.createElement('div');
+                aiDiv.className = 'emma-msg emma-msg-ai';
+                const answerText = data.answer || data.text || "Sorry, I didn't receive a valid response.";
+                if (window.marked) {
+                    aiDiv.innerHTML = window.marked.parse(answerText);
+                } else {
+                    aiDiv.textContent = answerText;
+                }
+                messages.appendChild(aiDiv);
+                messages.scrollTop = messages.scrollHeight;
+            } catch (err) {
+                if (messages.contains(typingDiv)) {
+                    messages.removeChild(typingDiv);
+                }
+                const errDiv = document.createElement('div');
+                errDiv.className = 'emma-msg emma-msg-ai';
+                errDiv.textContent = 'Connection error. Please ensure the backend server is running.';
+                messages.appendChild(errDiv);
+                messages.scrollTop = messages.scrollHeight;
+            }
+        });
+    }
 });
