@@ -57,24 +57,48 @@ window.addEventListener('DOMContentLoaded', function () {
 
 // ── README loader ─────────────────────────────────────────────────────────────
 async function loadReadme() {
+    const loadingEl = document.getElementById('readme-loading');
+    const contentEl = document.getElementById('readme-content');
     try {
-        const res = await fetch('./README.md');
-        if (!res.ok) throw new Error('Not found');
+        let res = await fetch('./README.md');
+        if (!res.ok) {
+            res = await fetch('README.md');
+        }
+        if (!res.ok) {
+            res = await fetch('/README.md');
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}: Not found`);
         const text = await res.text();
 
-        const renderer = new marked.Renderer();
-        renderer.code = ({ text, lang }) => {
-            if (lang === 'mermaid') return `<div class="mermaid">${text}</div>`;
-            return `<pre><code>${text}</code></pre>`;
-        };
+        let html = '';
+        if (typeof marked.use === 'function') {
+            marked.use({
+                renderer: {
+                    code(args) {
+                        const codeText = typeof args === 'object' ? args.text : args;
+                        const lang = typeof args === 'object' ? args.lang : arguments[1];
+                        if (lang === 'mermaid') return `<div class="mermaid">${codeText}</div>\n`;
+                        return `<pre><code>${codeText}</code></pre>\n`;
+                    }
+                }
+            });
+            html = marked.parse(text);
+        } else {
+            const renderer = new marked.Renderer();
+            renderer.code = (code, lang) => {
+                const codeText = typeof code === 'object' ? code.text : code;
+                const codeLang = typeof code === 'object' ? code.lang : lang;
+                if (codeLang === 'mermaid') return `<div class="mermaid">${codeText}</div>`;
+                return `<pre><code>${codeText}</code></pre>`;
+            };
+            html = marked.parse(text, { renderer });
+        }
 
-        document.getElementById('readme-loading').style.display = 'none';
-        document.getElementById('readme-content').innerHTML = marked.parse(text, { renderer });
-
-        const readmeContent = document.getElementById('readme-content');
+        loadingEl.style.display = 'none';
+        contentEl.innerHTML = html;
 
         // Wrap tables in scroll + fade containers
-        readmeContent.querySelectorAll('table').forEach(table => {
+        contentEl.querySelectorAll('table').forEach(table => {
             if (!table.parentElement.classList.contains('table-scroll')) {
                 const scroll = document.createElement('div');
                 scroll.className = 'table-scroll';
@@ -86,7 +110,7 @@ async function loadReadme() {
             }
         });
 
-        readmeContent.querySelectorAll('.table-fade-wrap').forEach(outer => {
+        contentEl.querySelectorAll('.table-fade-wrap').forEach(outer => {
             const scroll = outer.querySelector('.table-scroll');
             const update = () => {
                 const atEnd = scroll.scrollLeft + scroll.clientWidth >= scroll.scrollWidth - 4;
@@ -103,7 +127,7 @@ async function loadReadme() {
         await mermaid.run({ nodes: document.querySelectorAll('#readme-content .mermaid') });
 
         // Mermaid zoom/pan toolbars
-        readmeContent.querySelectorAll('.mermaid').forEach(diagram => {
+        contentEl.querySelectorAll('.mermaid').forEach(diagram => {
             if (diagram.parentElement.classList.contains('mermaid-zoomable')) return;
 
             const wrapper = document.createElement('div');
@@ -178,8 +202,11 @@ async function loadReadme() {
 
         readmeLoaded = true;
     } catch (e) {
-        document.getElementById('readme-loading').textContent =
-            'Could not load README.md. Make sure index.html and README.md are in the same folder.';
+        console.error('Failed to load README.md:', e);
+        if (loadingEl) {
+            loadingEl.style.display = 'block';
+            loadingEl.textContent = `Could not load README.md (${e.message}). Make sure index.html and README.md are in the same folder.`;
+        }
     }
 }
 
