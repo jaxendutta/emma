@@ -523,25 +523,38 @@ def generate_answer_hf(
 
 
 def generate_answer_gemini(prompt: str) -> tuple[str, str]:
-    """Call Google Gemini 2.5 Flash API (100% Free Tier: 15 RPM, 1500 RPD)."""
+    """Call Google Gemini Flash API with automatic multi-model fallback (1.5-flash -> 2.0-flash -> 2.5-flash)."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable not set")
     
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024}
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return text.strip(), ""
+    models = [
+        os.environ.get("EMMA_GEMINI_MODEL", "gemini-1.5-flash"),
+        "gemini-2.0-flash",
+        "gemini-2.5-flash"
+    ]
+    
+    last_err = None
+    for model_name in models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024}
+            }
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                return text.strip(), ""
+        except Exception as err:
+            last_err = err
+
+    raise last_err or RuntimeError("All Gemini model endpoints failed")
 
 
 def generate_answer_groq(prompt: str) -> tuple[str, str]:
