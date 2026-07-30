@@ -522,7 +522,56 @@ def generate_answer_hf(
     return generated.strip(), thinking
 
 
-# ── Unified inference: Ollama first, HF fallback ─────────────────────────────
+def generate_answer_gemini(prompt: str) -> tuple[str, str]:
+    """Call Google Gemini 2.5 Flash API (100% Free Tier: 15 RPM, 1500 RPD)."""
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable not set")
+    
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024}
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return text.strip(), ""
+
+
+def generate_answer_groq(prompt: str) -> tuple[str, str]:
+    """Call Groq Cloud API (Free Llama-3 70B / 8B fast inference)."""
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise ValueError("GROQ_API_KEY environment variable not set")
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.3,
+        "max_tokens": 1024
+    }
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        text = data["choices"][0]["message"]["content"]
+        return text.strip(), ""
+
+
+# ── Unified inference: Cloud API -> Ollama -> HF fallback ──────────────────────
 
 _inference_warned: set[str] = set()
 
@@ -540,16 +589,36 @@ def generate_answer(
 
     Priority
     --------
-    1. Ollama — tried when ollama_tag is present in model_cfg AND Ollama is
-       reachable AND the model tag is already pulled locally.
-       Fast, no VRAM cost, no model loading time.
-    2. HuggingFace transformers — used if Ollama is unavailable, the model
-       is not pulled, or inference raises an exception.
-       Requires hf_model and hf_tokenizer to be pre-loaded.
+    1. Cloud APIs — Gemini API (GEMINI_API_KEY) or Groq API (GROQ_API_KEY).
+       Ultra-fast (< 400ms), 0 MB RAM cost on Render Free Tier.
+    2. Ollama — tried when ollama_tag is present in model_cfg AND Ollama is reachable.
+    3. HuggingFace transformers — used if Ollama/Cloud APIs are unavailable.
 
     Returns (answer_text, thinking_text, backend)
-    backend is "ollama" or "hf" — recorded in PipelineResult.metadata.
     """
+    # ── Try Cloud APIs First (Zero Memory, Sub-400ms) ─────────────────────────
+    if os.environ.get("GEMINI_API_KEY"):
+        try:
+            print("  [inference] Using Google Gemini 2.5 Flash Cloud API...")
+            answer, thinking = generate_answer_gemini(prompt)
+            return answer, thinking, "gemini-cloud"
+        except Exception as exc:
+            warn_key = f"gemini_failed:{exc}"
+            if warn_key not in _inference_warned:
+                print(f"  [inference] Gemini Cloud API failed ({exc}) -> trying next backend")
+                _inference_warned.add(warn_key)
+
+    if os.environ.get("GROQ_API_KEY"):
+        try:
+            print("  [inference] Using Groq Cloud API...")
+            answer, thinking = generate_answer_groq(prompt)
+            return answer, thinking, "groq-cloud"
+        except Exception as exc:
+            warn_key = f"groq_failed:{exc}"
+            if warn_key not in _inference_warned:
+                print(f"  [inference] Groq Cloud API failed ({exc}) -> trying next backend")
+                _inference_warned.add(warn_key)
+
     ollama_tag = model_cfg.get("ollama_tag")
 
     # ── Try Ollama ────────────────────────────────────────────────────────────
