@@ -314,10 +314,10 @@ window.addEventListener('DOMContentLoaded', function () {
             messages.appendChild(typingDiv);
             messages.scrollTop = messages.scrollHeight;
 
-            // Fetch from /chat API
+            // Fetch from /chat API with automatic fallback
             try {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                const apiUrl = isLocal ? 'http://localhost:8080/chat' : 'https://emma-webhook.onrender.com/chat';
+                let apiUrl = isLocal ? 'http://localhost:8080/chat' : 'https://emma-webhook.onrender.com/chat';
                 
                 let sid = window.sessionStorage.getItem('emma_sid');
                 if (!sid) {
@@ -325,11 +325,25 @@ window.addEventListener('DOMContentLoaded', function () {
                     window.sessionStorage.setItem('emma_sid', sid);
                 }
 
-                const res = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text, session_id: sid })
-                });
+                let res;
+                try {
+                    res = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: text, session_id: sid })
+                    });
+                } catch (localErr) {
+                    // Fallback to live Render endpoint if local port 8080 is down
+                    if (isLocal) {
+                        res = await fetch('https://emma-webhook.onrender.com/chat', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: text, session_id: sid })
+                        });
+                    } else {
+                        throw localErr;
+                    }
+                }
                 const data = await res.json();
                 
                 // Remove typing indicator

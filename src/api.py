@@ -740,12 +740,14 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
 
     query_clean = re.sub(r"[^\w\s]", "", query_lower).strip()
 
-    # Greetings handler
+    # Greetings handler — warm, natural, open-ended clinical AI prompt
     if query_clean in _GREETING_PHRASES or any(query_clean.startswith(g + " ") for g in _GREETING_PHRASES):
         return JSONResponse(content=_build_response(
-            "Hi there! I'm EMMA, your Emergency Medicine Mentoring Agent. "
-            "Ask me about symptoms, diagnosis, treatment, or differentiation for emergency conditions "
-            "(e.g., Sepsis, Stroke, Heart Attack), or type **'quiz'** to test your knowledge!"
+            "Hi there! I am EMMA (Emergency Medicine Mentoring Agent). "
+            "I'm here to help you master emergency medicine concepts, review clinical guidelines, "
+            "and practice USMLE-style diagnostic questions.\n\n"
+            "What medical topic or question would you like to explore today? "
+            "You can ask me any clinical question, or type **'quiz'** to test your knowledge!"
         ))
 
     # Thanks handler
@@ -767,7 +769,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
                 "**'What are the symptoms of sepsis?'** or **'How is a stroke diagnosed?'**, or type **'quiz'** to practice!"
             ))
         elif not is_vague and raw_query and not RAG_ENABLED:
-            # They asked a full question about an unknown condition (e.g., fracture) while in static mode
+            # They asked a full question about an unknown condition while in static mode
             intent_key = "unsupported_condition"
 
     # Guess intent if Dialogflow sent a fallback
@@ -791,9 +793,9 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     WELCOME_INTENTS  = set(_get_intents_cfg().get("welcome_intents", ["defaultwelcomeintent", "welcome"]))
 
     if intent_key == "unsupported_condition":
-        cond_list = " · ".join(m["name"] for m in _CONDITION_META().values())
-        answer = ("I can currently give detailed answers about these eight acute emergency "
-                  "conditions:\n\n" + cond_list + "\n\nAsk me about any of these!")
+        cond_list = ", ".join(m["name"] for m in _CONDITION_META().values())
+        answer = ("I am ready to answer your medical questions! For instant static review, "
+                  "I have detailed summaries for these acute conditions:\n\n" + cond_list + "\n\nFeel free to ask about any of these or type **'quiz'** to practice!")
         return JSONResponse(content=_build_response(answer))
 
     elif intent_key in HANDLED_INTENTS:
@@ -900,12 +902,11 @@ async def chat(request: Request) -> JSONResponse:
     elif cond_key:
         answer = _static_response(intent_key, cond_key)
     else:
-        cond_list = " · ".join(m["name"] for m in _CONDITION_META().values())
         answer = (
-            "I can answer questions about eight acute emergency conditions: "
-            + cond_list
-            + ". Try asking about symptoms, diagnosis, treatment, risk factors, "
-            "urgency, or differentiation."
+            "Hi there! I am EMMA (Emergency Medicine Mentoring Agent). "
+            "I'm here to help you review symptoms, diagnostic steps, treatment protocols, and clinical differentiations across medical specialties.\n\n"
+            "Feel free to ask any medical question (for example: *'What are the symptoms of sepsis?'* or *'How is a stroke diagnosed?'*), "
+            "or type **'quiz'** to test your knowledge with clinical practice questions!"
         )
 
     _session_set(session_id, intent_key, cond_key, cond_display, message)
