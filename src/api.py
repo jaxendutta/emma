@@ -857,6 +857,55 @@ async def direct_query(request: Request) -> JSONResponse:
     return JSONResponse(content={"answer": answer, "rag_used": RAG_ENABLED})
 
 
+def _handle_conversational_or_meta(message: str) -> str | None:
+    m = re.sub(r"[^\w\s]", "", message.lower()).strip()
+    
+    # 1. Age / Birthday
+    if any(p in m for p in ["how old are you", "what is your age", "your birthday", "when were you born"]):
+        return (
+            "I'm EMMA, a digital Emergency Medicine AI mentor! As a virtual AI assistant, I don't have a human age or birthday, "
+            "but I am continuously loaded with up-to-date emergency medicine guidelines, USMLE medical textbooks, and clinical case questions.\n\n"
+            "What medical topic or condition would you like to review today?"
+        )
+    
+    # 2. Identity / Who are you
+    if any(p in m for p in ["who are you", "what is your name", "what are you", "tell me about yourself"]):
+        return (
+            "I am EMMA — Emergency Medicine Mentoring Agent! I'm designed to help medical students, residents, and clinicians "
+            "review emergency medicine concepts, explore diagnostic criteria, and test clinical reasoning with MCQs.\n\n"
+            "You can ask me any medical question, or type **'quiz'** to practice clinical board questions!"
+        )
+
+    # 3. Capabilities / What can you do
+    if any(p in m for p in ["what can you do", "help me", "how do you work", "features", "what do you do"]):
+        return (
+            "Here is what I can help you with:\n\n"
+            "1. **Clinical Q&A**: Ask about symptoms, diagnostic algorithms, or management for any emergency condition (e.g. Sepsis, Stroke, Heart Attack, Anaphylaxis, Trauma).\n"
+            "2. **Clinical Practice MCQs**: Type **'quiz'** to take USMLE-style emergency medicine questions and get explanations.\n"
+            "3. **Differential Diagnosis**: Ask how to differentiate overlapping conditions (e.g. DKA vs HHS, STEMI vs Pericarditis).\n\n"
+            "What would you like to start with?"
+        )
+
+    # 4. Greetings
+    _GREETINGS_EXACT = {"hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon", "good evening"}
+    if m in _GREETINGS_EXACT or any(m.startswith(g + " ") for g in ["hi", "hello", "hey"]):
+        return (
+            "Hello! I am EMMA (Emergency Medicine Mentoring Agent). "
+            "Ready to review emergency medicine cases or practice board-style questions?\n\n"
+            "Ask me any clinical question, or type **'quiz'** to start a practice question!"
+        )
+
+    # 5. Off-topic redirection (weather, sports, coding, movies, etc.)
+    _OFF_TOPIC_KEYWORDS = ["weather", "sports", "football", "basketball", "movie", "film", "song", "recipe", "python code", "stock market"]
+    if any(k in m for k in _OFF_TOPIC_KEYWORDS):
+        return (
+            "As an Emergency Medicine AI mentor, I specialize strictly in clinical medical topics, emergency protocols, "
+            "and diagnostic board prep! I can't help with off-topic subjects like that, but I'm ready for any medical question or quiz you'd like to try."
+        )
+
+    return None
+
+
 # ── Chat & Webhook endpoints ──────────────────────────────────────────────────
 
 @app.post("/chat")
@@ -876,6 +925,22 @@ async def chat(request: Request) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     if not message:
         raise HTTPException(status_code=422, detail="'message' field is required")
+
+    # 1. Handle Quiz Command
+    msg_clean = re.sub(r"[^\w\s]", "", message.lower()).strip()
+    if msg_clean in ("quiz", "start quiz", "quiz me", "practice", "mcq", "question"):
+        return _start_quiz(session_id, None, show_intro=True)
+
+    # 2. Check active Quiz Session answer
+    if session_id in _quiz_sessions:
+        return _handle_quiz_answer(session_id, message)
+
+    # 3. Check Conversational / Meta / Off-topic queries
+    conv_response = _handle_conversational_or_meta(message)
+    if conv_response:
+        return JSONResponse(content={
+            "text": conv_response, "answer": conv_response, "intent": "conversational", "condition": None
+        })
 
     intent_key   = _detect_intent_from_text(message)
     cond_key     = _extract_condition_from_text(message)
@@ -898,10 +963,9 @@ async def chat(request: Request) -> JSONResponse:
         answer = _static_response(intent_key, cond_key)
     else:
         answer = (
-            "Hi there! I am EMMA (Emergency Medicine Mentoring Agent). "
-            "I'm here to help you review symptoms, diagnostic steps, treatment protocols, and clinical differentiations across medical specialties.\n\n"
-            "Feel free to ask any medical question (for example: *'What are the symptoms of sepsis?'* or *'How is a stroke diagnosed?'*), "
-            "or type **'quiz'** to test your knowledge with clinical practice questions!"
+            "I'm here to help you explore clinical topics and practice emergency medicine reasoning! "
+            "You can ask me about diagnostic criteria, treatment steps, or symptoms for any emergency condition, "
+            "or type **'quiz'** to test your knowledge with clinical MCQs!"
         )
 
     _session_set(session_id, intent_key, cond_key, cond_display, message)
