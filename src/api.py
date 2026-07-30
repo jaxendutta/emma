@@ -190,6 +190,17 @@ async def _lifespan(app: FastAPI):
     _executor.shutdown(wait=False)
 
 
+app = FastAPI(title="EMMA API", lifespan=_lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # ── Session memory ────────────────────────────────────────────────────────────
 
 _SESSION_TTL = 600
