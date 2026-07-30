@@ -527,6 +527,9 @@ def _get_random_question() -> dict:
             "answer": "C",
             "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
         }
+    return random.choice(questions)
+
+
 def _build_response(text: str) -> dict:
     """Build standardized response dict containing text and Dialogflow compatibility keys."""
     return {
