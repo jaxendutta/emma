@@ -380,7 +380,7 @@ def _extract_condition_from_text(text: str) -> str | None:
 # ── Welcome openers ───────────────────────────────────────────────────────────
 
 _WELCOME_OPENERS: list[tuple[str, str | None, str | None]] = [
-    ("Ready to prep?",                                                                           None,                   None),
+    ("Ready to prep? Ask me about symptoms, diagnosis, or treatment for any condition — or start with heart attack symptoms!", "heart_attack", "getsymptoms"),
     ("Quiz time — what are the classic signs of meningitis?",                                    "meningitis",           "getsymptoms"),
     ("Did you know sepsis kills more people annually than breast, bowel, and prostate cancer combined?", "sepsis",        "geturgency"),
     ("Can you name the FAST signs of a stroke?",                                                 "stroke",               "getsymptoms"),
@@ -391,7 +391,7 @@ _WELCOME_OPENERS: list[tuple[str, str | None, str | None]] = [
     ("Can you name the Hour-1 Bundle for sepsis?",                                               "sepsis",               "gettreatment"),
     ("What's the door-to-balloon target for a STEMI?",                                          "heart_attack",         "geturgency"),
     ("Did you know appendicitis pain classically starts around the belly button before moving to the right?", "appendicitis", "getsymptoms"),
-    ("Ask me anything — symptoms, diagnosis, treatment, or how to tell two conditions apart.",   None,                   None),
+    ("Ask me anything — symptoms, diagnosis, treatment, or how to tell two conditions apart!",   "sepsis",               "getsymptoms"),
 ]
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
@@ -716,15 +716,49 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
 
     session = _session_get(session_id)
 
-    # 4. CONTEXT RESOLUTION (Fixes Fracture vs 'Tell me')
-    _VAGUE_PHRASES = ["yes", "sure", "ok", "okay", "tell me", "explain", "go on", "what else", "please", "more", "you tell me", "idk", "i don't know"]
-    is_vague = any(query_lower == p or query_lower.startswith(p) for p in _VAGUE_PHRASES) or len(query_lower.split()) <= 3
+    # 4. CONTEXT & CONVERSATIONAL PHRASE RESOLUTION
+    _GREETING_PHRASES = {"hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening", "howdy", "sup", "whats up", "whatsup"}
+    _THANKS_PHRASES = {"thanks", "thank you", "thx", "ty", "awesome", "great", "cool", "perfect", "amazing", "wonderful"}
+    _AFFIRMATIVE_PHRASES = {
+        "yes", "sure", "ok", "okay", "go ahead", "go for it", "lets go", "lets do it",
+        "sounds good", "yep", "yeah", "yea", "yup", "hit me", "start", "begin", "do it",
+        "ok sure", "absolutely", "ready", "ready to prep", "lets prep"
+    }
+    _VAGUE_PHRASES = [
+        "yes", "sure", "ok", "okay", "tell me", "explain", "go on", "what else", "please",
+        "more", "you tell me", "idk", "i dont know", "go ahead", "go for it", "lets go",
+        "lets do it", "sounds good", "yep", "yeah", "yea", "yup", "hit me", "start",
+        "begin", "do it", "ok sure", "absolutely", "ready"
+    ]
+
+    query_clean = re.sub(r"[^\w\s]", "", query_lower).strip()
+
+    # Greetings handler
+    if query_clean in _GREETING_PHRASES or any(query_clean.startswith(g + " ") for g in _GREETING_PHRASES):
+        return JSONResponse(content=_build_response(
+            "Hi there! I'm EMMA, your Emergency Medicine Mentoring Agent. 🩺 "
+            "Ask me about symptoms, diagnosis, treatment, or differentiation for emergency conditions "
+            "(e.g., Sepsis, Stroke, Heart Attack), or type **'quiz'** to test your knowledge!"
+        ))
+
+    # Thanks handler
+    if query_clean in _THANKS_PHRASES:
+        return JSONResponse(content=_build_response(
+            "You're welcome! 🩺 Let me know if you have any more medical questions or type **'quiz'** to practice another question."
+        ))
+
+    is_vague = any(query_clean == p or query_clean.startswith(p) for p in _VAGUE_PHRASES) or len(query_clean.split()) <= 3
 
     if not cond_key:
         if is_vague and session and session.get("cond_key"):
-            # They said "tell me more" -> inherit previous condition
+            # They said "tell me more" or "go ahead" -> inherit previous condition
             cond_key = session.get("cond_key")
             intent_key = session.get("intent_key", intent_key)
+        elif is_vague and (query_clean in _AFFIRMATIVE_PHRASES or any(query_clean.startswith(a) for a in _AFFIRMATIVE_PHRASES)):
+            return JSONResponse(content=_build_response(
+                "Awesome! Let me know what you'd like to review. 🩺 You can ask me a question like "
+                "**'What are the symptoms of sepsis?'** or **'How is a stroke diagnosed?'**, or type **'quiz'** to practice!"
+            ))
         elif not is_vague and raw_query and not RAG_ENABLED:
             # They asked a full question about an unknown condition (e.g., fracture) while in static mode
             intent_key = "unsupported_condition"
@@ -776,7 +810,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             if cond_key is not None:
                 answer = _static_response(intent_key, cond_key)
             else:
-                answer = "What condition would you like to know about?"
+                answer = "What condition would you like to know about? (e.g., Sepsis, Stroke, Heart Attack)"
             
             _session_set(session_id, intent_key, cond_key, cond_display, raw_query)
             return JSONResponse(content=_build_response(answer))
@@ -790,11 +824,10 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
 
     else:
         answer = (
-            "I'm not sure I understood that. I can help with:\n"
-            "• Symptoms of a condition\n"
-            "• How a condition is diagnosed\n"
-            "• Treatment and management\n\n"
-            "Try: 'What are the symptoms of sepsis?'"
+            "I want to make sure I give you the best medical answer! 🩺 "
+            "You can ask me about symptoms, diagnosis, treatment, risk factors, or clinical differentiation for: "
+            "**Sepsis, Heart Attack, Stroke, Anaphylaxis, Pulmonary Embolism, Meningitis, DKA, or Appendicitis**.\n\n"
+            "Try asking: *'What are the symptoms of sepsis?'* or type **'quiz'** to test your knowledge!"
         )
         return JSONResponse(content=_build_response(answer))
 
