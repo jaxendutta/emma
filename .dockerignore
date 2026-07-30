@@ -1,0 +1,44 @@
+# Virtual Environments
+.venv/
+venv/
+env/
+
+# Python cache & build outputs
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+
+# Git & IDE configs
+.git/
+.gitignore
+.claude/
+.vscode/
+.idea/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Notebooks & test artifacts
+.pytest_cache/
+.ipynb_checkpoints/
+*.ipynb
+
+# Data & Model cache directories
+data/
+models/vectorstore/
+models/classifier/
+models/clustering/
+models/ner/
+models/quiz/
+models/recommender/
+
+# OS / Logs
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

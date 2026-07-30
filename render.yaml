@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: emma-webhook
+    runtime: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: EMMA_USE_RAG
+        value: "false"
