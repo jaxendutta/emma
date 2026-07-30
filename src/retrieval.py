@@ -259,7 +259,7 @@ def build_prompt(
 def _ollama_available(base_url: str = "http://localhost:11434") -> bool:
     """Return True if the Ollama server is reachable."""
     try:
-        import requests
+        import requests  # type: ignore
         r = requests.get(f"{base_url}/api/tags", timeout=2)
         return r.status_code == 200
     except Exception:
@@ -269,7 +269,7 @@ def _ollama_available(base_url: str = "http://localhost:11434") -> bool:
 def _ollama_model_pulled(tag: str, base_url: str = "http://localhost:11434") -> bool:
     """Return True if the given Ollama tag is already pulled locally."""
     try:
-        import requests
+        import requests  # type: ignore
         r = requests.get(f"{base_url}/api/tags", timeout=2)
         if r.status_code != 200:
             return False
@@ -293,7 +293,7 @@ def warmup_ollama(tag: str, base_url: str = "http://localhost:11434") -> bool:
     Returns True if the warmup succeeded, False if Ollama is unreachable
     or the request failed (caller can decide whether to fall back to HF).
     """
-    import requests
+    import requests  # type: ignore
     print(f"> Warming up Ollama model '{tag}' for inference...")
     try:
         r = requests.post(
@@ -327,7 +327,7 @@ def generate_answer_ollama(
     For Qwen3 thinking models, the <think>...</think> block is stripped
     from the answer and returned separately.
     """
-    import requests
+    import requests  # type: ignore
 
     tag        = model_cfg["ollama_tag"]
     is_thinking = model_cfg.get("thinking", False) and think
@@ -881,7 +881,7 @@ class EMMARetriever:
         chunks = [
             RetrievalResult(
                 rank=r["rank"], score=r["score"], confidence=r["confidence"],
-                book=r.get("friendly_name", r.get("book", "Unknown")),
+                book=str(r.get("friendly_name") or r.get("book") or "Unknown"),
                 text=r["text"], chunk_idx=r.get("chunk_idx", -1),
             )
             for r in raw_results
