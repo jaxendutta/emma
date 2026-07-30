@@ -849,9 +849,10 @@ async def direct_query(request: Request) -> JSONResponse:
     return JSONResponse(content={"answer": answer, "rag_used": RAG_ENABLED})
 
 
-# ── Chat endpoint ─────────────────────────────────────────────────────────────
+# ── Chat & Webhook endpoints ──────────────────────────────────────────────────
 
 @app.post("/chat")
+@app.post("/webhook")
 async def chat(request: Request) -> JSONResponse:
     """EMMA widget endpoint — no Dialogflow, no deadline, think=True allowed.
     Body: { "message": "...", "session_id": "...", "think": false }

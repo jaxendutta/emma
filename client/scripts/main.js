@@ -317,7 +317,7 @@ window.addEventListener('DOMContentLoaded', function () {
             // Fetch from /chat API
             try {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                const apiUrl = isLocal ? 'http://localhost:8080/chat' : 'https://emma-webhook.onrender.com/chat';
+                const apiUrl = isLocal ? 'http://localhost:8080/chat' : 'https://emma.onrender.com/chat';
                 
                 let sid = window.sessionStorage.getItem('emma_sid');
                 if (!sid) {
