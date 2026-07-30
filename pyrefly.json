@@ -1,0 +1,8 @@
+{
+  "python-environment": ".venv",
+  "search-path": [
+    ".",
+    "src",
+    ".venv/Lib/site-packages"
+  ]
+}

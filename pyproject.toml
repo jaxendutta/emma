@@ -70,3 +70,8 @@ dev = [
     "pytest",
     "ruff",             # linting + formatting
 ]
+
+[tool.pyrefly]
+python-environment = ".venv"
+search-path = [".", "src", ".venv/Lib/site-packages"]
+

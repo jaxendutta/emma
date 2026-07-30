@@ -554,20 +554,25 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     valid_letters = [k.upper() for k in options.keys()]
     user_input_clean = user_input.strip().upper()
 
-    # Accept answers like "A", "B", "C", "D", or full option text
+    # Accept answers like "A", "B", "C", "D", "What about B", "Is it B?", or full option text
     selected_letter = None
     if user_input_clean in valid_letters:
         selected_letter = user_input_clean
     else:
-        # Try to match by option text (case-insensitive, partial match)
-        for k, v in options.items():
-            if user_input_clean in v.upper():
-                selected_letter = k.upper()
-                break
+        # Regex search for single option letter in conversational phrase ("What about B", "I think C")
+        match = re.search(r"\b([A-D])\b", user_input_clean)
+        if match and match.group(1) in valid_letters:
+            selected_letter = match.group(1)
+        else:
+            # Try to match by option text (case-insensitive, partial match)
+            for k, v in options.items():
+                if len(user_input_clean) >= 3 and user_input_clean in v.upper():
+                    selected_letter = k.upper()
+                    break
 
     # Vague or invalid response handling
     vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT"]
-    if not selected_letter or user_input_clean in vague_phrases:
+    if not selected_letter or (user_input_clean in vague_phrases and selected_letter not in valid_letters):
         opts = "\n\n".join([f"{k}) {v}" for k, v in options.items()])
         letters = ", ".join(valid_letters)
         text = (
@@ -668,48 +673,39 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     cond_key   = _condition_key_from_entity(parameters)
 
 
-    # Quiz explanation follow-up: support 'explain', 'explain answer', and 'explain why the answer is X'
+    # Quiz explanation follow-up: support 'explain', 'explain answer', 'why', and 'explain why the answer is X'
     quiz_explain_prefix = "explain why the answer is "
-    if query_lower in ("explain", "explain answer"):
+    if query_lower in ("explain", "explain answer", "why", "explanation") or query_lower.startswith("explain"):
         last_quiz = _last_quiz.get(session_id)
         if last_quiz:
             letter = str(last_quiz.get("answer", "")).upper()
             options = last_quiz.get("options", {})
             option_text = options.get(letter, "")
             question = last_quiz.get("question", "")
-            prompt = (
-                f"Question: {question}\n"
-                f"Options: " + ", ".join([f"{k}) {v}" for k, v in options.items()]) + "\n"
-                f"Correct answer: {letter}) {option_text}\n"
-                f"Explain why this is correct and the others are not."
-            )
+            explanation_static = last_quiz.get("explanation", "")
+
             if RAG_ENABLED:
+                prompt = (
+                    f"Question: {question}\n"
+                    f"Options: " + ", ".join([f"{k}) {v}" for k, v in options.items()]) + "\n"
+                    f"Correct answer: {letter}) {option_text}\n"
+                    f"Explain why this is correct and the others are not."
+                )
                 answer = await _rag_response("quizexplanation", prompt)
             else:
-                answer = "RAG is disabled. Enable EMMA_USE_RAG to get explanations."
+                if explanation_static:
+                    answer = f"**Clinical Explanation:**\n\n{explanation_static}"
+                else:
+                    answer = (
+                        f"**Correct Choice:** **{letter}) {option_text}**\n\n"
+                        f"**Clinical Rationale:** In emergency patient evaluation, diagnostic actions must be prioritized "
+                        f"based on immediate stability and standard protocol. **{letter}) {option_text}** is the "
+                        f"established first-line action.\n\n"
+                        f"Type **'quiz'** to try another question!"
+                    )
             return JSONResponse(content=_build_response(answer))
         else:
-            return JSONResponse(content=_build_response("Sorry, I couldn't find the last quiz question to explain."))
-    elif query_lower.startswith(quiz_explain_prefix):
-        letter = query_lower[len(quiz_explain_prefix):].strip().upper()[:1]
-        last_quiz = _last_quiz.get(session_id)
-        if last_quiz and letter in last_quiz.get("options", {}):
-            question = last_quiz.get("question", "")
-            options = last_quiz.get("options", {})
-            option_text = options.get(letter, "")
-            prompt = (
-                f"Question: {question}\n"
-                f"Options: " + ", ".join([f"{k}) {v}" for k, v in options.items()]) + "\n"
-                f"Correct answer: {letter}) {option_text}\n"
-                f"Explain why this is correct and the others are not."
-            )
-            if RAG_ENABLED:
-                answer = await _rag_response("quizexplanation", prompt)
-            else:
-                answer = "RAG is disabled. Enable EMMA_USE_RAG to get explanations."
-            return JSONResponse(content=_build_response(answer))
-        else:
-            return JSONResponse(content=_build_response("Sorry, I couldn't find the last quiz question to explain."))
+            return JSONResponse(content=_build_response("Sorry, I couldn't find the last quiz question to explain. Type 'quiz' to try a question!"))
 
     if not cond_key and raw_query:
         cond_key = _extract_condition_from_text(raw_query)
