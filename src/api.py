@@ -58,6 +58,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger("emma.api")
 
@@ -174,21 +175,25 @@ async def _fire_rag_background(
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    if RAG_ENABLED:
-        logger.info("Starting up EMMA (Ollama warmup + HF model load may take 2-3 min)...")
+    _cloud_available = bool(
+        os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY")
+    )
+    if RAG_ENABLED and not _cloud_available:
+        # Only pre-load the heavy local retriever when there's no Cloud LLM key.
+        # When Gemini/Groq is configured, _rag_response() calls the Cloud API
+        # directly and never touches the local retriever — skip the 2-min load.
+        logger.info("No Cloud LLM key found — pre-loading local retriever (may take 2-3 min)...")
         loop = asyncio.get_event_loop()
         try:
-            # retrieval.EMMARetriever.load() handles everything:
-            #   1. Ollama warmup request (warms model into Ollama memory)
-            #   2. HF model load (always, as genuine fallback)
-            # Blocking startup intentionally — better to wait here once than
-            # to have the first live user request trigger a 2-minute cold load.
             await loop.run_in_executor(_executor, _get_retriever)
             logger.info("EMMA startup complete — ready to serve requests.")
         except Exception as exc:
             logger.warning("Startup pre-warm failed (%s) — will retry on first request", exc)
+    elif RAG_ENABLED:
+        logger.info("EMMA startup complete — Cloud LLM ready (Gemini/Groq), no local model load needed.")
     yield
     _executor.shutdown(wait=False)
+
 
 
 app = FastAPI(title="EMMA API", lifespan=_lifespan)
@@ -201,8 +206,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Static files (local dev only) ────────────────────────────────────────────
+# Mount the client/ directory so http://localhost:PORT/client/ works locally.
+# On Render this path is served by the CDN/web server directly.
+# Use CWD-relative path: __file__ may resolve into .venv when installed non-editably.
+_CLIENT_DIR = os.path.join(os.getcwd(), "client")
+if os.path.isdir(_CLIENT_DIR):
+    app.mount("/client", StaticFiles(directory=_CLIENT_DIR, html=True), name="client")
+else:
+    logger.warning("client/ dir not found at %s — /client/ routes will 404", _CLIENT_DIR)
 
-# ── Session memory ────────────────────────────────────────────────────────────
+
+
 
 _SESSION_TTL = 600
 _sessions: dict[str, dict] = {}
@@ -908,17 +923,21 @@ def _handle_conversational_or_meta(message: str) -> str | None:
             "What would you like to start with?"
         )
 
-    # 4. Greetings
+    # 4. Greetings — varied, natural, redirect to clinical topics
     _GREETINGS_EXACT = {
         "hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon",
-        "good evening", "sup", "whats up", "whatsup", "howdy", "yo", "greetings", "how are you", "hows it going"
+        "good evening", "sup", "whats up", "whatsup", "howdy", "yo", "greetings",
+        "how are you", "hows it going", "hows it going", "how r u", "hey there"
     }
     if m in _GREETINGS_EXACT or any(m.startswith(g + " ") for g in ["hi", "hello", "hey", "sup", "yo", "howdy"]):
-        return (
-            "Hello! I am EMMA, your emergency medicine mentoring agent. "
-            "Ready to review emergency medicine cases or practice board-style questions?\n\n"
-            "Ask me any clinical question, or type quiz to start a practice question!"
-        )
+        return random.choice([
+            "Hey! Good to see you. What's on your mind — got a clinical question or want to run through a quick quiz?",
+            "Hi there! I'm here and ready. Ask me anything emergency medicine — symptoms, diagnosis, management, whatever you need.",
+            "Hey! What can I help you with today? You can ask me about any emergency condition, or type quiz if you want to test yourself.",
+            "Hello! What would you like to explore today? I cover everything from sepsis management to stroke diagnosis.",
+            "Hi! Good timing. Ask me any clinical question or say quiz and I'll throw a board-style question at you.",
+            "Hey, what's up! I'm EMMA — ask me about any emergency medicine topic and I'll walk you through it.",
+        ])
 
     # 5. Off-topic redirection (weather, sports, coding, movies, etc.)
     _OFF_TOPIC_KEYWORDS = ["weather", "sports", "football", "basketball", "movie", "film", "song", "recipe", "python code", "stock market"]
