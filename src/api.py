@@ -358,6 +358,25 @@ def _rag_response_sync(query: str, think: bool = False) -> str:
 
 async def _rag_response(intent_key: str, query: str,
                         cond_key: str | None = None, think: bool = False) -> str:
+    # ── Cloud LLM path (Gemini → Groq fallback) ───────────────────────────────
+    # When a cloud key is present, skip the heavy local retriever entirely.
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    groq_key   = os.environ.get("GROQ_API_KEY", "")
+
+    if gemini_key or groq_key:
+        loop = asyncio.get_event_loop()
+        try:
+            from src.retrieval import generate_answer_gemini, generate_answer_groq
+            if gemini_key:
+                return await loop.run_in_executor(
+                    _executor, lambda: generate_answer_gemini(query))
+            else:
+                return await loop.run_in_executor(
+                    _executor, lambda: generate_answer_groq(query))
+        except Exception as exc:
+            logger.warning("Cloud LLM failed (%s) — falling back to local retriever", exc)
+
+    # ── Local retriever fallback ───────────────────────────────────────────────
     loop = asyncio.get_event_loop()
     try:
         return await loop.run_in_executor(
@@ -367,6 +386,7 @@ async def _rag_response(intent_key: str, query: str,
         if cond_key:
             return _static_response(intent_key, cond_key)
         return "I encountered an issue retrieving an answer. Please try again."
+
 
 
 # ── Free-text intent detection (for /chat) ────────────────────────────────────
