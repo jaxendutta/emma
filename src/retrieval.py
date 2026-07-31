@@ -529,9 +529,9 @@ def generate_answer_gemini(prompt: str) -> tuple[str, str]:
         raise ValueError("GEMINI_API_KEY environment variable not set")
     
     models = [
-        os.environ.get("EMMA_GEMINI_MODEL", "gemini-1.5-flash"),
-        "gemini-2.0-flash",
-        "gemini-2.5-flash"
+        os.environ.get("EMMA_GEMINI_MODEL", "gemini-flash-latest"),
+        "gemini-flash-lite-latest",
+        "gemini-2.0-flash"
     ]
     
     last_err = None
