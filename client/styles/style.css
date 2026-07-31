@@ -844,6 +844,25 @@ body.tab-graph df-messenger {
         visibility 0.22s step-end !important;
 }
 
+/* ── Mobile: drawer always fullscreen, hide toggle ───────────────────────── */
+@media (max-width: 600px) {
+    .emma-drawer {
+        bottom: 0 !important;
+        right: 0 !important;
+        width: 100vw !important;
+        height: 100dvh !important;
+        max-width: 100vw !important;
+        max-height: 100dvh !important;
+        border-radius: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    #emma-fullscreen-btn {
+        display: none !important;
+    }
+}
+
 .emma-drawer-header {
     height: 54px;
     background: #f4faf6;
