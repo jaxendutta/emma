@@ -315,6 +315,13 @@ window.addEventListener('DOMContentLoaded', function () {
         closeBtn.addEventListener('click', () => drawer.classList.add('emma-hidden'));
     }
 
+    // Show teaser after 2s delay on first page load
+    if (teaser) {
+        setTimeout(() => {
+            teaser.classList.remove('emma-hidden');
+        }, 2000);
+    }
+
     // ── Save Dropdown Menu ─────────────────────────────────────────────
     const saveBtn = document.getElementById('emma-save-btn');
     const saveMenu = document.getElementById('emma-save-menu');

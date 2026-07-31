@@ -99,27 +99,59 @@ h1 em {
     color: var(--accent);
 }
 
+.hero-row {
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    gap: 12px;
+    margin-top: 24px;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 600px) {
+    .hero-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
 .hero-sub {
     font-weight: 300;
     font-style: italic;
     color: var(--muted);
     line-height: 1.75;
     max-width: 720px;
-    margin-bottom: 2rem;
     padding: 10px 0;
 }
 
 .cta-hint {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    background: var(--light);
-    color: var(--accent);
+    gap: 6px;
+    background: transparent;
+    color: var(--accent, #2d6a4f);
     font-size: 0.875rem;
     font-weight: 500;
-    padding: 10px 16px;
-    border-radius: 6px;
-    border: 1px solid #b7e4c7;
+    padding: 9px 20px;
+    border-radius: 100px;
+    border: 1.5px solid var(--accent, #2d6a4f);
+    cursor: pointer;
+    font-family: inherit;
+    letter-spacing: 0.02em;
+    box-shadow: none;
+    transition: background 0.18s ease, color 0.18s ease, transform 0.15s ease;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.cta-hint:hover {
+    background: var(--accent, #2d6a4f);
+    color: #ffffff;
+    transform: translateY(-1px);
+}
+
+.cta-hint:active {
+    transform: translateY(0);
 }
 
 .section {
@@ -179,8 +211,8 @@ h1 em {
 }
 
 .quiz-card-header {
-    font-size:1.15rem; 
-    padding-bottom: 0.75em; 
+    font-size: 1.15rem;
+    padding-bottom: 0.75em;
     font-family: var(--serif);
 }
 
@@ -774,7 +806,19 @@ body.tab-graph df-messenger {
     flex-direction: column;
     overflow: hidden;
     font-family: var(--sans, 'Source Sans 3', system-ui, sans-serif);
-    transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1), height 0.25s cubic-bezier(0.16, 1, 0.3, 1), bottom 0.25s ease, right 0.25s ease, border-radius 0.25s ease;
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    transform-origin: bottom right;
+    pointer-events: auto;
+    visibility: visible;
+    transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+        transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+        visibility 0.28s step-end,
+        width 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+        height 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+        bottom 0.25s ease,
+        right 0.25s ease,
+        border-radius 0.25s ease;
 }
 
 .emma-drawer.emma-fullscreen {
@@ -790,7 +834,14 @@ body.tab-graph df-messenger {
 }
 
 .emma-drawer.emma-hidden {
-    display: none !important;
+    display: flex !important;
+    opacity: 0 !important;
+    transform: translateY(18px) scale(0.92) !important;
+    pointer-events: none !important;
+    visibility: hidden !important;
+    transition: opacity 0.22s ease-in,
+        transform 0.22s ease-in,
+        visibility 0.22s step-end !important;
 }
 
 .emma-drawer-header {
@@ -908,6 +959,7 @@ body.tab-graph df-messenger {
         opacity: 0;
         transform: translateY(8px);
     }
+
     100% {
         opacity: 1;
         transform: translateY(0);
@@ -943,6 +995,20 @@ body.tab-graph df-messenger {
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
 }
 
+.emma-disclaimer-banner {
+    text-align: center;
+    align-self: center;
+    font-size: 0.65rem;
+    color: #adb5bd;
+    background: transparent;
+    border: none;
+    padding: 2px 0;
+    margin: 2px auto 8px auto;
+    max-width: 92%;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+}
+
 .emma-teaser {
     position: fixed;
     bottom: 92px;
@@ -960,7 +1026,7 @@ body.tab-graph df-messenger {
     align-items: center;
     gap: 10px;
     cursor: pointer;
-    animation: emmaPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: emmaPopIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -1005,9 +1071,11 @@ body.tab-graph df-messenger {
     0% {
         opacity: 0.4;
     }
+
     50% {
         opacity: 1;
     }
+
     100% {
         opacity: 0.4;
     }
