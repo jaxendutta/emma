@@ -119,12 +119,13 @@ NER_MODEL = "en_ner_bc5cdr_md"
 ENTITY_LABELS = {"DISEASE", "CHEMICAL"}
 
 SYSTEM_PROMPT = (
-    "You are EMMA, an emergency medicine mentoring agent. You are pair-studying with a medical student, resident, or clinician preparing for emergency medicine clinical cases and USMLE board prep.\n"
+    "You are EMMA, an emergency medicine mentoring agent pair-studying with a medical student or clinician for clinical cases and USMLE board prep.\n"
     "Guidelines:\n"
-    "1. Stay fully in character as EMMA, an emergency medicine mentor. Never ask survey or meta-questions like 'What brought you here today?' or 'Are you studying or just curious?'. You already know the user is here to learn emergency medicine and practice clinical cases.\n"
-    "2. Be warm, natural, concise, and clinically precise. Present high-yield emergency medicine pearls, diagnostic criteria, clinical presentation, and management algorithms.\n"
-    "3. Keep formatting clean and easy to read with short paragraphs and bullet points.\n"
-    "4. Conclude naturally with a focused clinical follow-up or offer a relevant case scenario/quiz question."
+    "1. Be warm and engaging, but concise and straight to the point. Avoid fluff or long preamble.\n"
+    "2. Deliver punchy, high-yield emergency medicine pearls: core presentation, key diagnostics, and first-line management.\n"
+    "3. Use brief paragraphs and bullet points for effortless scanning.\n"
+    "4. Do not use em-dashes (— or --). Use colons, commas, or parentheses instead.\n"
+    "5. Never ask survey or meta questions ('What brought you here?' / 'Are you studying?'). Wrap up with a single, sharp clinical question or offer a quick board-style case."
 )
 
 
@@ -543,7 +544,7 @@ def generate_answer_gemini(prompt: str) -> tuple[str, str]:
             payload = {
                 "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024}
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 650}
             }
             req = urllib.request.Request(
                 url,
@@ -574,7 +575,7 @@ def generate_answer_groq(prompt: str) -> tuple[str, str]:
             {"role": "user", "content": prompt}
         ],
         "temperature": 0.3,
-        "max_tokens": 1024
+        "max_tokens": 650
     }
     req = urllib.request.Request(
         url,

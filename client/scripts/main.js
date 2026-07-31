@@ -389,6 +389,17 @@ window.addEventListener('DOMContentLoaded', function () {
                         } else {
                             aiDiv.textContent = para;
                         }
+                        if (window.renderMathInElement) {
+                            window.renderMathInElement(aiDiv, {
+                                delimiters: [
+                                    {left: '$$', right: '$$', display: true},
+                                    {left: '$', right: '$', display: false},
+                                    {left: '\\(', right: '\\)', display: false},
+                                    {left: '\\[', right: '\\]', display: true}
+                                ],
+                                throwOnError: false
+                            });
+                        }
                         messages.appendChild(aiDiv);
                         messages.scrollTop = messages.scrollHeight;
                     }, idx * 280);
