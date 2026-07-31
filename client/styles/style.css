@@ -1023,11 +1023,16 @@ body.tab-graph df-messenger {
     font-weight: 500;
     z-index: 99998;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 10px;
     cursor: pointer;
+    max-width: calc(100vw - 100px);
     animation: emmaPopIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.emma-teaser span {
+    text-wrap: balance;
 }
 
 .emma-teaser::after {
