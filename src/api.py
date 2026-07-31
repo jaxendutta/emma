@@ -368,11 +368,13 @@ async def _rag_response(intent_key: str, query: str,
         try:
             from src.retrieval import generate_answer_gemini, generate_answer_groq
             if gemini_key:
-                return await loop.run_in_executor(
+                answer, _thinking = await loop.run_in_executor(
                     _executor, lambda: generate_answer_gemini(query))
+                return answer
             else:
-                return await loop.run_in_executor(
+                answer, _thinking = await loop.run_in_executor(
                     _executor, lambda: generate_answer_groq(query))
+                return answer
         except Exception as exc:
             logger.warning("Cloud LLM failed (%s) — falling back to local retriever", exc)
 
