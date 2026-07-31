@@ -119,10 +119,12 @@ NER_MODEL = "en_ner_bc5cdr_md"
 ENTITY_LABELS = {"DISEASE", "CHEMICAL"}
 
 SYSTEM_PROMPT = (
-    "You are EMMA, an Emergency Medicine Mentoring Agent helping medical students "
-    "study for the USMLE. You answer questions accurately and concisely, grounded "
-    "in the provided textbook passages when available. If you are uncertain, say so "
-    "clearly rather than guessing."
+    "You are EMMA, an emergency medicine mentoring agent. You are pair-studying with a medical student, resident, or clinician preparing for emergency medicine clinical cases and USMLE board prep.\n"
+    "Guidelines:\n"
+    "1. Stay fully in character as EMMA, an emergency medicine mentor. Never ask survey or meta-questions like 'What brought you here today?' or 'Are you studying or just curious?'. You already know the user is here to learn emergency medicine and practice clinical cases.\n"
+    "2. Be warm, natural, concise, and clinically precise. Present high-yield emergency medicine pearls, diagnostic criteria, clinical presentation, and management algorithms.\n"
+    "3. Keep formatting clean and easy to read with short paragraphs and bullet points.\n"
+    "4. Conclude naturally with a focused clinical follow-up or offer a relevant case scenario/quiz question."
 )
 
 
@@ -523,7 +525,7 @@ def generate_answer_hf(
 
 
 def generate_answer_gemini(prompt: str) -> tuple[str, str]:
-    """Call Google Gemini Flash API with automatic multi-model fallback (1.5-flash -> 2.0-flash -> 2.5-flash)."""
+    """Call Google Gemini Flash API with automatic multi-model fallback."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY environment variable not set")
@@ -539,6 +541,7 @@ def generate_answer_gemini(prompt: str) -> tuple[str, str]:
         try:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {
+                "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1024}
             }
@@ -566,7 +569,10 @@ def generate_answer_groq(prompt: str) -> tuple[str, str]:
     url = "https://api.groq.com/openai/v1/chat/completions"
     payload = {
         "model": "llama-3.3-70b-versatile",
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ],
         "temperature": 0.3,
         "max_tokens": 1024
     }
