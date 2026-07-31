@@ -315,6 +315,94 @@ window.addEventListener('DOMContentLoaded', function () {
         closeBtn.addEventListener('click', () => drawer.classList.add('emma-hidden'));
     }
 
+    // ── Save Dropdown Menu ─────────────────────────────────────────────
+    const saveBtn = document.getElementById('emma-save-btn');
+    const saveMenu = document.getElementById('emma-save-menu');
+    const actionCopy = document.getElementById('emma-action-copy');
+    const actionDownload = document.getElementById('emma-action-download');
+
+    if (saveBtn && saveMenu) {
+        saveBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            saveMenu.classList.toggle('emma-hidden');
+        });
+
+        document.addEventListener('click', () => {
+            saveMenu.classList.add('emma-hidden');
+        });
+    }
+
+    function getTranscriptText() {
+        if (!messages) return '';
+        const msgDivs = messages.querySelectorAll('.emma-msg');
+        let text = 'EMMA Emergency Medicine Mentoring Agent — Conversation Transcript\n';
+        text += 'Date: ' + new Date().toLocaleString() + '\n';
+        text += '='.repeat(60) + '\n\n';
+
+        msgDivs.forEach(div => {
+            if (div.classList.contains('emma-msg-typing')) return;
+            const isUser = div.classList.contains('emma-msg-user');
+            const sender = isUser ? 'User' : 'EMMA';
+            const content = div.innerText || div.textContent || '';
+            text += `[${sender}]:\n${content.trim()}\n\n`;
+        });
+        return text;
+    }
+
+    if (actionCopy) {
+        actionCopy.addEventListener('click', async () => {
+            const transcript = getTranscriptText();
+            try {
+                await navigator.clipboard.writeText(transcript);
+                actionCopy.innerText = '✓ Copied!';
+                setTimeout(() => {
+                    actionCopy.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy to Clipboard';
+                }, 2000);
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+        });
+    }
+
+    if (actionDownload) {
+        actionDownload.addEventListener('click', () => {
+            const transcript = getTranscriptText();
+            const blob = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const now = new Date();
+            const timestamp = now.getFullYear().toString() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0') + '-' +
+                String(now.getHours()).padStart(2, '0') +
+                String(now.getMinutes()).padStart(2, '0') +
+                String(now.getSeconds()).padStart(2, '0');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `emma-transcript-${timestamp}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    // ── Fullscreen Toggle ──────────────────────────────────────────────
+    const fullscreenBtn = document.getElementById('emma-fullscreen-btn');
+    const fullscreenIcon = document.getElementById('emma-fullscreen-icon');
+
+    if (fullscreenBtn && drawer && fullscreenIcon) {
+        fullscreenBtn.addEventListener('click', () => {
+            const isFull = drawer.classList.toggle('emma-fullscreen');
+            if (isFull) {
+                fullscreenBtn.title = 'Exit Fullscreen';
+                fullscreenIcon.innerHTML = '<polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line>';
+            } else {
+                fullscreenBtn.title = 'Toggle Fullscreen';
+                fullscreenIcon.innerHTML = '<polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line>';
+            }
+        });
+    }
+
     let isFirstMessageSent = false;
 
     if (form && input && messages) {

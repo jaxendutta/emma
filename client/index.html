@@ -144,10 +144,43 @@
   <div id="emma-drawer" class="emma-drawer emma-hidden">
     <div class="emma-drawer-header">
       <div class="emma-drawer-title">
-        <div class="emma-title-text">EMMA</div>
-        <div class="emma-subtitle">Emergency Medicine Mentoring Agent</div>
+        <div class="emma-title-text">Ask EMMA</div>
       </div>
-      <button id="emma-drawer-close" class="emma-drawer-close" aria-label="Close Chat">&times;</button>
+      <div class="emma-header-actions">
+        <!-- Save / Export Dropdown -->
+        <div class="emma-dropdown">
+          <button id="emma-save-btn" class="emma-icon-btn" title="Save / Export Conversation" aria-label="Save Conversation">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+          </button>
+          <div id="emma-save-menu" class="emma-dropdown-menu emma-hidden">
+            <button id="emma-action-copy" class="emma-dropdown-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copy to Clipboard
+            </button>
+            <button id="emma-action-download" class="emma-dropdown-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Save as Transcript (.txt)
+            </button>
+          </div>
+        </div>
+
+        <!-- Fullscreen Toggle Button -->
+        <button id="emma-fullscreen-btn" class="emma-icon-btn" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
+          <svg id="emma-fullscreen-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+        </button>
+
+        <!-- Close Button -->
+        <button id="emma-drawer-close" class="emma-drawer-close" aria-label="Close Chat">&times;</button>
+      </div>
     </div>
 
     <div id="emma-messages" class="emma-messages">
@@ -157,7 +190,7 @@
     </div>
 
     <form id="emma-input-form" class="emma-input-form">
-      <input type="text" id="emma-input-field" placeholder="Ask EMMA or type quiz..." autocomplete="off" />
+      <input type="text" id="emma-input-field" placeholder="Ask a question or type 'quiz'..." autocomplete="off" />
       <button type="submit" class="emma-send-btn" aria-label="Send">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"></line>
