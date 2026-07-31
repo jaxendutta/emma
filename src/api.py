@@ -365,6 +365,7 @@ async def _rag_response(intent_key: str, query: str,
 
     if gemini_key or groq_key:
         loop = asyncio.get_event_loop()
+        cloud_err = None
         try:
             from src.retrieval import generate_answer_gemini, generate_answer_groq
             if gemini_key:
@@ -376,9 +377,23 @@ async def _rag_response(intent_key: str, query: str,
                     _executor, lambda: generate_answer_groq(query))
                 return answer
         except Exception as exc:
-            logger.warning("Cloud LLM failed (%s) — falling back to local retriever", exc)
+            logger.error(
+                "Cloud LLM failed (intent=%s, key_prefix=%s): %s: %s",
+                intent_key,
+                (gemini_key[:8] + "...") if gemini_key else ("groq:" + groq_key[:8] + "..."),
+                type(exc).__name__,
+                exc,
+            )
+            # When cloud keys are configured but the call fails, return a graceful
+            # message rather than trying the local retriever (no GPU/models on Render).
+            if cond_key:
+                return _static_response(intent_key, cond_key)
+            return (
+                "I'm having trouble reaching my AI backend right now. "
+                "Please try again in a moment!"
+            )
 
-    # ── Local retriever fallback ───────────────────────────────────────────────
+    # ── Local retriever fallback (only when no cloud key is configured) ────────
     loop = asyncio.get_event_loop()
     try:
         return await loop.run_in_executor(
@@ -388,6 +403,7 @@ async def _rag_response(intent_key: str, query: str,
         if cond_key:
             return _static_response(intent_key, cond_key)
         return "I encountered an issue retrieving an answer. Please try again."
+
 
 
 
