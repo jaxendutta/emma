@@ -57,7 +57,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger("emma.api")
@@ -215,6 +215,11 @@ if os.path.isdir(_CLIENT_DIR):
     app.mount("/client", StaticFiles(directory=_CLIENT_DIR, html=True), name="client")
 else:
     logger.warning("client/ dir not found at %s — /client/ routes will 404", _CLIENT_DIR)
+
+@app.get("/")
+@app.get("/client")
+async def root_redirect():
+    return RedirectResponse(url="/client/?tab=home")
 
 
 

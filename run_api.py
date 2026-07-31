@@ -53,7 +53,7 @@ def main():
     client_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "client")
 
     print("=" * 56)
-    print("  EMMA  —  local dev server")
+    print("  [ EMMA ] Local Dev Server")
     print("=" * 56)
     print(f"  API      : http://localhost:{args.port}/")
     print(f"  Frontend : http://localhost:{args.frontend_port}/?tab=home  <- open this")

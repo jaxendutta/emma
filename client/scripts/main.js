@@ -315,6 +315,8 @@ window.addEventListener('DOMContentLoaded', function () {
         closeBtn.addEventListener('click', () => drawer.classList.add('emma-hidden'));
     }
 
+    let isFirstMessageSent = false;
+
     if (form && input && messages) {
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -335,6 +337,16 @@ window.addEventListener('DOMContentLoaded', function () {
             typingDiv.textContent = 'EMMA is thinking...';
             messages.appendChild(typingDiv);
             messages.scrollTop = messages.scrollHeight;
+
+            let wakeupTimer = null;
+            if (!isFirstMessageSent) {
+                isFirstMessageSent = true;
+                wakeupTimer = setTimeout(() => {
+                    if (messages.contains(typingDiv)) {
+                        typingDiv.textContent = 'EMMA is waking up. This might take up to a minute...';
+                    }
+                }, 3500);
+            }
 
             // Fetch from /chat API with automatic fallback
             try {
@@ -368,6 +380,8 @@ window.addEventListener('DOMContentLoaded', function () {
                 }
                 const data = await res.json();
                 
+                if (wakeupTimer) clearTimeout(wakeupTimer);
+
                 // Remove typing indicator
                 if (messages.contains(typingDiv)) {
                     messages.removeChild(typingDiv);
@@ -405,6 +419,7 @@ window.addEventListener('DOMContentLoaded', function () {
                     }, idx * 280);
                 });
             } catch (err) {
+                if (wakeupTimer) clearTimeout(wakeupTimer);
                 if (messages.contains(typingDiv)) {
                     messages.removeChild(typingDiv);
                 }

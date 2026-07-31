@@ -926,6 +926,18 @@ body.tab-graph df-messenger {
     background: rgba(255, 255, 255, 0.15);
 }
 
+@keyframes emmaPulseSlow {
+    0% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0.4;
+    }
+}
+
 .emma-msg-typing {
     align-self: flex-start;
     background: #f4faf6;
@@ -935,6 +947,8 @@ body.tab-graph df-messenger {
     font-style: italic;
     font-size: 0.88rem;
     padding: 10px 14px;
+    animation: emmaPulseSlow 2.5s ease-in-out infinite;
+    transition: all 0.3s ease;
 }
 
 .emma-msg-user {
@@ -943,13 +957,6 @@ body.tab-graph df-messenger {
     color: #ffffff;
     border-radius: 16px 16px 4px 16px;
     box-shadow: 0 2px 8px rgba(45, 106, 79, 0.18);
-}
-
-.emma-msg-typing {
-    align-self: flex-start;
-    color: #6c757d;
-    font-style: italic;
-    font-size: 0.85rem;
 }
 
 .emma-input-form {
