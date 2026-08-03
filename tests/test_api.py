@@ -146,6 +146,16 @@ def test_chat_conversation_history():
     assert len(session["history"]) == 4  # 2 user turns + 2 assistant turns
 
 
+def test_is_quiz_request():
+    from src.api import _is_quiz_request
+    assert _is_quiz_request("quiz") is True
+    assert _is_quiz_request("quiz me") is True
+    assert _is_quiz_request("okay quiz me now") is True
+    assert _is_quiz_request("can you give me a board question?") is True
+    assert _is_quiz_request("how do quizzes help in learning?") is False
+    assert _is_quiz_request("what was the answer to the previous quiz question?") is False
+
+
 # ── Normalisation edge cases ──────────────────────────────────────────────────
 
 @pytest.mark.parametrize("condition", [

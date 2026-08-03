@@ -575,7 +575,7 @@ def generate_answer_gemini(prompt: str, history: list[dict] | None = None) -> tu
             payload = {
                 "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
                 "contents": contents,
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 650}
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 1500}
             }
             req = urllib.request.Request(
                 url,
@@ -612,7 +612,7 @@ def generate_answer_groq(prompt: str, history: list[dict] | None = None) -> tupl
         "model": "llama-3.3-70b-versatile",
         "messages": messages,
         "temperature": 0.3,
-        "max_tokens": 650
+        "max_tokens": 1500
     }
     req = urllib.request.Request(
         url,

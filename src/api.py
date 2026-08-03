@@ -601,7 +601,7 @@ def _build_response(text: str) -> dict:
 
 def _start_quiz(session_id: str, specialty: str | None = None, show_intro: bool = True) -> JSONResponse:
     q = _get_random_question()
-    opts = "\n\n\n".join([f"{k}) {v}" for k, v in q.get("options", {}).items()])
+    opts = "\n".join([f"{k}) {v}" for k, v in q.get("options", {}).items()])
     letters = ", ".join(q.get("options", {}).keys())
     if show_intro:
         question_text = f"Quiz Time!\n\n{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
@@ -649,7 +649,7 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     # Vague or invalid response handling
     vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT"]
     if not selected_letter or (user_input_clean in vague_phrases and selected_letter not in valid_letters):
-        opts = "\n\n".join([f"{k}) {v}" for k, v in options.items()])
+        opts = "\n".join([f"{k}) {v}" for k, v in options.items()])
         letters = ", ".join(valid_letters)
         text = (
             f"Please reply with one of the option letters: {letters}.\n\n"
@@ -821,7 +821,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             "You're welcome! Let me know if you have any more medical questions or type quiz to practice another question."
         ))
 
-    is_vague = any(query_clean == p or query_clean.startswith(p) for p in _VAGUE_PHRASES) or len(query_clean.split()) <= 3
+    is_vague = any(query_clean == p or query_clean.startswith(p) for p in _VAGUE_PHRASES) or (bool(query_clean) and len(query_clean.split()) <= 3)
 
     if not cond_key:
         if is_vague and session and session.get("cond_key"):
@@ -983,6 +983,30 @@ def _handle_conversational_or_meta(message: str) -> str | None:
     return None
 
 
+def _is_quiz_request(message: str) -> bool:
+    """Determine if a user message is explicitly asking to start an interactive quiz/MCQ."""
+    msg_clean = re.sub(r"[^\w\s]", "", message.lower()).strip()
+    
+    # Standalone exact triggers
+    if msg_clean in {"quiz", "start quiz", "quiz me", "practice", "mcq", "test me", "start", "another quiz", "next quiz"}:
+        return True
+
+    # Exclude questions asking ABOUT a quiz or previous quiz
+    meta_patterns = [
+        r"previous quiz", r"last quiz", r"this quiz", r"the quiz", r"about the quiz",
+        r"what (was|is) the (answer|explanation)", r"how do quiz", r"why (was|is) the quiz"
+    ]
+    if any(re.search(p, message.lower()) for p in meta_patterns):
+        return False
+
+    # Action phrases requesting a new quiz
+    request_patterns = [
+        r"\b(quiz\s+me|start\s+a?\s*quiz|give\s+me\s+a?\s*(quiz|mcq|question)|test\s+me|take\s+a?\s*quiz|do\s+a?\s*quiz|try\s+a?\s*quiz|want\s+a?\s*quiz|ready\s+for\s+a?\s*quiz)\b",
+        r"\b(board\s+question|practice\s+question|mcq\s+question)\b"
+    ]
+    return any(bool(re.search(p, message.lower())) for p in request_patterns)
+
+
 # ── Chat & Webhook endpoints ──────────────────────────────────────────────────
 
 @app.post("/chat")
@@ -1004,8 +1028,7 @@ async def chat(request: Request) -> JSONResponse:
         raise HTTPException(status_code=422, detail="'message' field is required")
 
     # 1. Handle Quiz Command
-    msg_clean = re.sub(r"[^\w\s]", "", message.lower()).strip()
-    if msg_clean in ("quiz", "start quiz", "quiz me", "practice", "mcq", "question"):
+    if _is_quiz_request(message):
         return _start_quiz(session_id, None, show_intro=True)
 
     # 2. Check active Quiz Session answer
