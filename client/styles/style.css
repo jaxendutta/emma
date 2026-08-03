@@ -1020,6 +1020,25 @@ body.tab-graph df-messenger {
     margin-bottom: 0;
 }
 
+.emma-msg ul,
+.emma-msg ol {
+    padding-left: 1.25rem;
+    margin: 0.4rem 0;
+}
+
+.emma-msg li {
+    margin-bottom: 0.25rem;
+    line-height: 1.4;
+}
+
+.emma-msg li:last-child {
+    margin-bottom: 0;
+}
+
+.emma-msg strong {
+    font-weight: 600;
+}
+
 .emma-msg-ai {
     align-self: flex-start;
     background: #f4faf6;

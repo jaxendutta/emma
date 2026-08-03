@@ -322,6 +322,7 @@ def generate_answer_ollama(
     model_cfg: dict,
     think:     bool = False,
     base_url:  str  = "http://localhost:11434",
+    history:   list[dict] | None = None,
 ) -> tuple[str, str]:
     """
     Generate an answer via the Ollama HTTP API.
@@ -335,19 +336,24 @@ def generate_answer_ollama(
     tag        = model_cfg["ollama_tag"]
     is_thinking = model_cfg.get("thinking", False) and think
 
+    messages = [
+        {
+            "role": "system",
+            "content": "You are EMMA, an Emergency Medicine Mentoring Agent. You chat with medical students via text message. CRITICAL RULES: 1. Keep it brief: Never write more than 2 or 3 short sentences. 2. No Markdown: Do not use asterisks, bolding, bullet points, or headers. Use plain text only. 3. Get straight to the point: Never use introductory filler. 4. Stick to the prompt."
+        }
+    ]
+    if history:
+        for msg in history:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            content_text = msg.get("content", "")
+            if content_text:
+                messages.append({"role": role, "content": content_text})
+    messages.append({"role": "user", "content": prompt})
+
     # Ollama chat payload
     payload = {
         "model": tag,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are EMMA, an Emergency Medicine Mentoring Agent. You chat with medical students via text message. CRITICAL RULES: 1. Keep it brief: Never write more than 2 or 3 short sentences. 2. No Markdown: Do not use asterisks, bolding, bullet points, or headers. Use plain text only. 3. Get straight to the point: Never use introductory filler. 4. Stick to the prompt."
-            },
-            {
-                "role": "user", 
-                "content": prompt
-            }
-        ],
+        "messages": messages,
         "stream": False,
         "options": {
             "temperature": 0.6 if is_thinking else 0.7,
@@ -466,6 +472,7 @@ def generate_answer_hf(
     max_new_tokens: int   = 512,
     temperature:    float = 0.6,
     think:          bool  = False,
+    history:        list[dict] | None = None,
 ) -> tuple[str, str]:
     """
     Generate an answer from a loaded HF model.
@@ -480,7 +487,14 @@ def generate_answer_hf(
 
     is_thinking = model_cfg.get("thinking", False) and think
 
-    messages = [{"role": "user", "content": prompt}]
+    messages = []
+    if history:
+        for msg in history:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            content_text = msg.get("content", "")
+            if content_text:
+                messages.append({"role": role, "content": content_text})
+    messages.append({"role": "user", "content": prompt})
 
     if is_thinking:
         text = tokenizer.apply_chat_template(
@@ -525,7 +539,7 @@ def generate_answer_hf(
     return generated.strip(), thinking
 
 
-def generate_answer_gemini(prompt: str) -> tuple[str, str]:
+def generate_answer_gemini(prompt: str, history: list[dict] | None = None) -> tuple[str, str]:
     """Call Google Gemini Flash API with automatic multi-model fallback."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -536,6 +550,23 @@ def generate_answer_gemini(prompt: str) -> tuple[str, str]:
         "gemini-flash-lite-latest",
         "gemini-2.0-flash"
     ]
+
+    contents = []
+    if history:
+        for msg in history:
+            role = "user" if msg.get("role") == "user" else "model"
+            content_text = msg.get("content", "")
+            if not content_text:
+                continue
+            if contents and contents[-1]["role"] == role:
+                contents[-1]["parts"][0]["text"] += "\n\n" + content_text
+            else:
+                contents.append({"role": role, "parts": [{"text": content_text}]})
+
+    if contents and contents[-1]["role"] == "user":
+        contents[-1]["parts"][0]["text"] += "\n\n" + prompt
+    else:
+        contents.append({"role": "user", "parts": [{"text": prompt}]})
     
     last_err = None
     for model_name in models:
@@ -543,7 +574,7 @@ def generate_answer_gemini(prompt: str) -> tuple[str, str]:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
             payload = {
                 "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
-                "contents": [{"parts": [{"text": prompt}]}],
+                "contents": contents,
                 "generationConfig": {"temperature": 0.3, "maxOutputTokens": 650}
             }
             req = urllib.request.Request(
@@ -561,19 +592,25 @@ def generate_answer_gemini(prompt: str) -> tuple[str, str]:
     raise last_err or RuntimeError("All Gemini model endpoints failed")
 
 
-def generate_answer_groq(prompt: str) -> tuple[str, str]:
+def generate_answer_groq(prompt: str, history: list[dict] | None = None) -> tuple[str, str]:
     """Call Groq Cloud API (Free Llama-3 70B / 8B fast inference)."""
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
         raise ValueError("GROQ_API_KEY environment variable not set")
 
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        for msg in history:
+            role = "user" if msg.get("role") == "user" else "assistant"
+            content_text = msg.get("content", "")
+            if content_text:
+                messages.append({"role": role, "content": content_text})
+    messages.append({"role": "user", "content": prompt})
+
     url = "https://api.groq.com/openai/v1/chat/completions"
     payload = {
         "model": "llama-3.3-70b-versatile",
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt}
-        ],
+        "messages": messages,
         "temperature": 0.3,
         "max_tokens": 650
     }
@@ -603,6 +640,7 @@ def generate_answer(
     hf_token:   str | None = None,
     think:      bool = False,
     ollama_url: str  = "http://localhost:11434",
+    history:    list[dict] | None = None,
 ) -> tuple[str, str, str]:
     """
     Unified inference entry point.
@@ -619,8 +657,8 @@ def generate_answer(
     # ── Try Cloud APIs First (Zero Memory, Sub-400ms) ─────────────────────────
     if os.environ.get("GEMINI_API_KEY"):
         try:
-            print("  [inference] Using Google Gemini 2.5 Flash Cloud API...")
-            answer, thinking = generate_answer_gemini(prompt)
+            print("  [inference] Using Google Gemini Cloud API...")
+            answer, thinking = generate_answer_gemini(prompt, history=history)
             return answer, thinking, "gemini-cloud"
         except Exception as exc:
             warn_key = f"gemini_failed:{exc}"
@@ -631,7 +669,7 @@ def generate_answer(
     if os.environ.get("GROQ_API_KEY"):
         try:
             print("  [inference] Using Groq Cloud API...")
-            answer, thinking = generate_answer_groq(prompt)
+            answer, thinking = generate_answer_groq(prompt, history=history)
             return answer, thinking, "groq-cloud"
         except Exception as exc:
             warn_key = f"groq_failed:{exc}"
@@ -657,7 +695,7 @@ def generate_answer(
             try:
                 print(f"  [inference] Using Ollama ({ollama_tag})")
                 answer, thinking = generate_answer_ollama(
-                    prompt, model_cfg, think=think, base_url=ollama_url
+                    prompt, model_cfg, think=think, base_url=ollama_url, history=history
                 )
                 return answer, thinking, "ollama"
             except Exception as exc:
@@ -678,7 +716,7 @@ def generate_answer(
         _inference_warned.add(warn_key)
 
     answer, thinking = generate_answer_hf(
-        prompt, hf_model, hf_tokenizer, model_cfg, think=think
+        prompt, hf_model, hf_tokenizer, model_cfg, think=think, history=history
     )
     return answer, thinking, "hf"
 
@@ -904,6 +942,7 @@ class EMMARetriever:
         min_confidence: str  = MIN_CONFIDENCE,
         max_new_tokens: int  = 512,
         think:          bool = False,
+        history:        list[dict] | None = None,
     ) -> PipelineResult:
         """
         Full RAG pipeline: NER -> retrieve -> prompt -> LLM.
@@ -917,6 +956,7 @@ class EMMARetriever:
         min_confidence : minimum confidence level for retrieved chunks
         max_new_tokens : maximum tokens to generate (HF only; Ollama uses num_predict)
         think          : enable Qwen3 chain-of-thought (slow — avoid on webhook)
+        history        : conversation history
         """
         model_cfg = get_model_config(self.model_id)
 
@@ -952,6 +992,7 @@ class EMMARetriever:
             hf_token    = self.hf_token,
             think       = think,
             ollama_url  = self.ollama_url,
+            history     = history,
         )
         latency = time.time() - t0
 

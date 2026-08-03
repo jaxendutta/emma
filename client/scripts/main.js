@@ -510,8 +510,9 @@ window.addEventListener('DOMContentLoaded', function () {
                     setTimeout(() => {
                         const aiDiv = document.createElement('div');
                         aiDiv.className = 'emma-msg emma-msg-ai emma-pop-in';
+                        const normalizedPara = para.replace(/^[•·]\s*/gm, '- ');
                         if (window.marked) {
-                            aiDiv.innerHTML = window.marked.parse(para);
+                            aiDiv.innerHTML = window.marked.parse(normalizedPara);
                         } else {
                             aiDiv.textContent = para;
                         }

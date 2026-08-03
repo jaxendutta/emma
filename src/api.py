@@ -236,10 +236,15 @@ def _session_get(session_id: str) -> dict:
 
 
 def _session_set(session_id: str, intent_key: str, cond_key: str | None,
-                 cond_display: str | None, raw_query: str) -> None:
+                 cond_display: str | None, raw_query: str,
+                 history: list[dict] | None = None) -> None:
+    existing = _sessions.get(session_id, {})
+    hist = history if history is not None else existing.get("history", [])
     _sessions[session_id] = {
         "ts": _time.time(), "intent_key": intent_key,
         "cond_key": cond_key, "cond_display": cond_display, "last_query": raw_query,
+        "history": hist,
+        "quiz_followup": existing.get("quiz_followup", False),
     }
     now     = _time.time()
     expired = [k for k, v in _sessions.items() if now - v["ts"] > _SESSION_TTL]
@@ -362,7 +367,8 @@ def _rag_response_sync(query: str, think: bool = False) -> str:
 
 
 async def _rag_response(intent_key: str, query: str,
-                        cond_key: str | None = None, think: bool = False) -> str:
+                        cond_key: str | None = None, think: bool = False,
+                        history: list[dict] | None = None) -> str:
     # ── Cloud LLM path (Gemini → Groq fallback) ───────────────────────────────
     # When a cloud key is present, skip the heavy local retriever entirely.
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
@@ -375,11 +381,11 @@ async def _rag_response(intent_key: str, query: str,
             from src.retrieval import generate_answer_gemini, generate_answer_groq
             if gemini_key:
                 answer, _thinking = await loop.run_in_executor(
-                    _executor, lambda: generate_answer_gemini(query))
+                    _executor, lambda: generate_answer_gemini(query, history=history))
                 return answer
             else:
                 answer, _thinking = await loop.run_in_executor(
-                    _executor, lambda: generate_answer_groq(query))
+                    _executor, lambda: generate_answer_groq(query, history=history))
                 return answer
         except Exception as exc:
             logger.error(
@@ -519,25 +525,9 @@ async def health():
 # ── Response formatting ───────────────────────────────────────────────────────
 
 def _format_bubbles(text: str) -> list[str]:
-    bubbles: list[str] = []
-    for section in [s.strip() for s in text.split("\n\n") if s.strip()]:
-        header_lines: list[str] = []
-        for line in section.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith(("•", "·", "-")) or (
-                len(stripped) > 1 and stripped[0].isdigit() and stripped[1] in ".)"
-            ):
-                if header_lines:
-                    bubbles.append(" ".join(header_lines))
-                    header_lines = []
-                bubbles.append(stripped)
-            else:
-                header_lines.append(stripped)
-        if header_lines:
-            bubbles.append(" ".join(header_lines))
-    return [b for b in bubbles if b]
+    """Split text into paragraph sections by double line breaks so list items stay together in one bubble."""
+    sections = [s.strip() for s in text.split("\n\n") if s.strip()]
+    return sections if sections else [text.strip()]
 
 
 def _build_response(text: str) -> dict:
@@ -1025,16 +1015,30 @@ async def chat(request: Request) -> JSONResponse:
     # 3. When RAG / Cloud LLM is enabled, let the LLM handle all conversational, meta, and medical queries naturally!
     if RAG_ENABLED:
         logger.info("Chat | RAG Direct Inference | think=%s | query=%r", think, message[:80])
-        answer = await _rag_response("direct", message, think=think)
+        session = _session_get(session_id)
+        history = session.get("history", [])
+
+        answer = await _rag_response("direct", message, think=think, history=history)
+
+        new_history = list(history)
+        new_history.append({"role": "user", "content": message})
+        new_history.append({"role": "assistant", "content": answer})
+        _session_set(session_id, "rag", None, None, message, history=new_history[-20:])
+
         return JSONResponse(content={
             "text": answer, "answer": answer, "intent": "rag", "condition": None
         })
 
     # 4. Static offline fallback when RAG is disabled
+    session = _session_get(session_id)
+    history = session.get("history", [])
+
     conv_response = _handle_conversational_or_meta(message)
     if conv_response:
-        if session_id in _sessions:
-            del _sessions[session_id]
+        new_history = list(history)
+        new_history.append({"role": "user", "content": message})
+        new_history.append({"role": "assistant", "content": conv_response})
+        _session_set(session_id, "conversational", None, None, message, history=new_history[-20:])
         return JSONResponse(content={
             "text": conv_response, "answer": conv_response, "intent": "conversational", "condition": None
         })
@@ -1052,7 +1056,10 @@ async def chat(request: Request) -> JSONResponse:
             "or type quiz to practice clinical board questions!"
         )
 
-    _session_set(session_id, intent_key, cond_key, cond_display, message)
+    new_history = list(history)
+    new_history.append({"role": "user", "content": message})
+    new_history.append({"role": "assistant", "content": answer})
+    _session_set(session_id, intent_key, cond_key, cond_display, message, history=new_history[-20:])
     return JSONResponse(content={
         "text": answer, "answer": answer, "intent": intent_key, "condition": cond_display
     })
