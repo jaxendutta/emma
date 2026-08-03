@@ -29,6 +29,16 @@ def test_health():
     assert "rag_enabled" in data
 
 
+def test_head_root():
+    r = client.head("/")
+    assert r.status_code == 200
+
+
+def test_head_health():
+    r = client.head("/health")
+    assert r.status_code == 200
+
+
 # ── Conditions ────────────────────────────────────────────────────────────────
 
 def test_conditions_list():

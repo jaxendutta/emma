@@ -196,7 +196,12 @@ async def _lifespan(app: FastAPI):
 
 
 
-app = FastAPI(title="EMMA API", lifespan=_lifespan)
+app = FastAPI(
+    title="EMMA API",
+    description="FastAPI webhook backend for EMMA — Emergency Medicine Mentoring Agent",
+    version="1.0.0",
+    lifespan=_lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -216,9 +221,11 @@ if os.path.isdir(_CLIENT_DIR):
 else:
     logger.warning("client/ dir not found at %s — /client/ routes will 404", _CLIENT_DIR)
 
-@app.get("/")
-@app.get("/client")
-async def root_redirect():
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/client", methods=["GET", "HEAD"])
+async def root_redirect(request: Request):
+    if request.method == "HEAD":
+        return JSONResponse(content={"status": "ok"})
     return RedirectResponse(url="/client/?tab=home")
 
 
@@ -475,26 +482,9 @@ _WELCOME_OPENERS: list[tuple[str, str | None, str | None]] = [
     ("Ask me anything — symptoms, diagnosis, treatment, or how to tell two conditions apart!",   "sepsis",               "getsymptoms"),
 ]
 
-# ── FastAPI app ───────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="EMMA API",
-    description="FastAPI webhook backend for EMMA — Emergency Medicine Mentoring Agent",
-    version="1.0.0",
-    lifespan=_lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "GET"],
-    allow_headers=["*"],
-)
-
-
 # ── Health ────────────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     info: dict[str, Any] = {
         "status":              "ok",
