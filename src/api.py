@@ -363,10 +363,9 @@ def _build_rag_query(intent_key: str, condition_name: str | None, raw_query: str
 
 # ── Async RAG for /chat and /query (no deadline) ──────────────────────────────
 
-def _rag_response_sync(query: str, think: bool = False) -> str:
+def _rag_response_sync(query: str, think: bool = False, history: list[dict] | None = None) -> str:
     retriever = _get_retriever()
-    # CHANGED: use_rag=False forces the LLM to answer from memory
-    result    = retriever.answer(query, use_rag=False, think=think)
+    result    = retriever.answer(query, use_rag=True, think=think, history=history)
     answer    = result.answer.strip()
     if not answer:
         raise ValueError("Empty answer from retriever")
@@ -376,14 +375,24 @@ def _rag_response_sync(query: str, think: bool = False) -> str:
 async def _rag_response(intent_key: str, query: str,
                         cond_key: str | None = None, think: bool = False,
                         history: list[dict] | None = None) -> str:
-    # ── Cloud LLM path (Gemini → Groq fallback) ───────────────────────────────
-    # When a cloud key is present, skip the heavy local retriever entirely.
+    loop = asyncio.get_event_loop()
+    
+    # ── Attempt textbook-grounded RAG retrieval first ──────────────────────────
+    try:
+        retriever = _get_retriever()
+        result = await loop.run_in_executor(
+            _executor, lambda: retriever.answer(query, use_rag=True, think=think, history=history)
+        )
+        if result and result.answer:
+            return result.answer.strip()
+    except Exception as exc:
+        logger.debug("Local retriever unavailable for query (%s) — using cloud direct LLM", exc)
+
+    # ── Cloud LLM direct path fallback (Gemini → Groq) ─────────────────────────
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     groq_key   = os.environ.get("GROQ_API_KEY", "")
 
     if gemini_key or groq_key:
-        loop = asyncio.get_event_loop()
-        cloud_err = None
         try:
             from src.retrieval import generate_answer_gemini, generate_answer_groq
             if gemini_key:
@@ -395,21 +404,14 @@ async def _rag_response(intent_key: str, query: str,
                     _executor, lambda: generate_answer_groq(query, history=history))
                 return answer
         except Exception as exc:
-            logger.error(
-                "Cloud LLM failed (intent=%s, key_prefix=%s): %s: %s",
-                intent_key,
-                (gemini_key[:8] + "...") if gemini_key else ("groq:" + groq_key[:8] + "..."),
-                type(exc).__name__,
-                exc,
-            )
-            # When cloud keys are configured but the call fails, return a graceful
-            # message rather than trying the local retriever (no GPU/models on Render).
+            logger.error("Cloud LLM failed (intent=%s): %s", intent_key, exc)
             if cond_key:
                 return _static_response(intent_key, cond_key)
-            return (
-                "I'm having trouble reaching my AI backend right now. "
-                "Please try again in a moment!"
-            )
+            return "I'm having trouble reaching my AI backend right now. Please try again in a moment!"
+
+    if cond_key:
+        return _static_response(intent_key, cond_key)
+    return "I encountered an issue retrieving an answer. Please try again."
 
     # ── Local retriever fallback (only when no cloud key is configured) ────────
     loop = asyncio.get_event_loop()
