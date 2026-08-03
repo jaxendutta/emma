@@ -175,15 +175,38 @@ h1 em {
     line-height: 1.6;
 }
 
-.grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+#specialties-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
     max-width: 1080px;
-    gap: 1px;
-    background: var(--border);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
+}
+
+@keyframes pillFloatIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.94);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.specialty-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 16px;
+    border-radius: 100px;
+    border: 1.5px solid var(--accent2, #40916c);
+    color: var(--accent, #2d6a4f);
+    font-size: 0.83rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    background: transparent;
+    cursor: default;
+    opacity: 0;
+    animation: pillFloatIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .grid.grid-3 {
@@ -191,20 +214,12 @@ h1 em {
 }
 
 @media (min-width: 600px) {
-    .grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
     .grid.grid-3 {
         grid-template-columns: repeat(2, 1fr);
     }
 }
 
 @media (min-width: 900px) {
-    .grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-
     .grid.grid-3 {
         grid-template-columns: repeat(3, 1fr);
     }

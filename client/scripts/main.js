@@ -101,10 +101,10 @@ async function loadReadme() {
         if (window.renderMathInElement) {
             window.renderMathInElement(contentEl, {
                 delimiters: [
-                    {left: '$$', right: '$$', display: true},
-                    {left: '$', right: '$', display: false},
-                    {left: '\\(', right: '\\)', display: false},
-                    {left: '\\[', right: '\\]', display: true}
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
                 ],
                 throwOnError: false
             });
@@ -259,19 +259,36 @@ overlay.addEventListener('click', closeDrawer);
 // ── Specialties grid population ───────────────────────────────────────────
 window.renderSpecialtiesGrid = function () {
     const specialties = [
-        "Anaesthesia", "Anatomy", "Biochemistry", "Dental", "Dermatology", "ENT", "Internal Medicine", "Microbiology", "Obstetrics & Gynaecology", "Ophthalmology", "Orthopaedics", "Pathology", "Pediatrics", "Pharmacology", "Physiology", "Psychiatry", "Public Health", "Radiology", "Surgery", "Emergency Medicine"
-    ];
+        "Anaesthesia",
+        "Anatomy",
+        "Biochemistry",
+        "Dental",
+        "Dermatology",
+        "Emergency Medicine",
+        "ENT",
+        "Internal Medicine",
+        "Microbiology",
+        "Obstetrics & Gynaecology",
+        "Ophthalmology",
+        "Orthopaedics",
+        "Pathology",
+        "Pediatrics",
+        "Pharmacology",
+        "Physiology",
+        "Psychiatry",
+        "Public Health",
+        "Radiology",
+        "Surgery"
+    ].sort((a, b) => a.localeCompare(b));
     const grid = document.getElementById('specialties-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    specialties.forEach(name => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        const div = document.createElement('div');
-        div.className = 'card-name';
-        div.textContent = name;
-        card.appendChild(div);
-        grid.appendChild(card);
+    specialties.forEach((name, idx) => {
+        const pill = document.createElement('span');
+        pill.className = 'specialty-pill';
+        pill.textContent = name;
+        pill.style.animationDelay = `${idx * 55}ms`;
+        grid.appendChild(pill);
     });
 };
 
@@ -447,7 +464,7 @@ window.addEventListener('DOMContentLoaded', function () {
             try {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 let apiUrl = isLocal ? 'http://localhost:8080/chat' : 'https://emma-webhook.onrender.com/chat';
-                
+
                 let sid = window.sessionStorage.getItem('emma_sid');
                 if (!sid) {
                     sid = 'emma-session-' + Math.random().toString(36).substring(2, 9);
@@ -474,7 +491,7 @@ window.addEventListener('DOMContentLoaded', function () {
                     }
                 }
                 const data = await res.json();
-                
+
                 if (wakeupTimer) clearTimeout(wakeupTimer);
 
                 // Remove typing indicator
@@ -501,10 +518,10 @@ window.addEventListener('DOMContentLoaded', function () {
                         if (window.renderMathInElement) {
                             window.renderMathInElement(aiDiv, {
                                 delimiters: [
-                                    {left: '$$', right: '$$', display: true},
-                                    {left: '$', right: '$', display: false},
-                                    {left: '\\(', right: '\\)', display: false},
-                                    {left: '\\[', right: '\\]', display: true}
+                                    { left: '$$', right: '$$', display: true },
+                                    { left: '$', right: '$', display: false },
+                                    { left: '\\(', right: '\\)', display: false },
+                                    { left: '\\[', right: '\\]', display: true }
                                 ],
                                 throwOnError: false
                             });
