@@ -533,13 +533,14 @@ _quiz_sessions: dict[str, dict] = {}
 _last_quiz: dict[str, dict] = {}
 
 
-def _get_random_question() -> dict:
-    """
-    Returns a random question from the MedQA-USMLE US_qbank.jsonl file.
-    """
+_QUESTIONS_CACHE: list[dict] | None = None
+
+def _get_all_questions() -> list[dict]:
+    global _QUESTIONS_CACHE
+    if _QUESTIONS_CACHE is not None:
+        return _QUESTIONS_CACHE
     import os
     import json
-    import random
     questions_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "data", "MedQA-USMLE", "questions", "US", "US_qbank.jsonl"
@@ -552,7 +553,17 @@ def _get_random_question() -> dict:
                 if line:
                     questions.append(json.loads(line))
     except Exception as e:
-        # Fallback to placeholder if file not found or error
+        logger.warning("Could not load MedQA jsonl: %s", e)
+    _QUESTIONS_CACHE = questions
+    return _QUESTIONS_CACHE
+
+
+def _get_random_question(specialty: str | None = None) -> dict:
+    """
+    Returns a random question from the MedQA-USMLE US_qbank.jsonl file, optionally filtered by specialty keywords.
+    """
+    all_q = _get_all_questions()
+    if not all_q:
         return {
             "question": "A patient presents to the clinic with typical acute symptoms. What is the most appropriate next step?",
             "options": {
@@ -564,19 +575,28 @@ def _get_random_question() -> dict:
             "answer": "C",
             "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
         }
-    if not questions:
-        return {
-            "question": "A patient presents to the clinic with typical acute symptoms. What is the most appropriate next step?",
-            "options": {
-                "A": "Prescribe antibiotics immediately",
-                "B": "Order an MRI",
-                "C": "Perform a physical examination",
-                "D": "Discharge with analgesics"
-            },
-            "answer": "C",
-            "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
+    if specialty:
+        spec_clean = specialty.lower()
+        keywords_map = {
+            "cardiology": ["cardiac", "heart", "coronary", "stemi", "chest pain", "murmur", "myocardial", "ecg"],
+            "surgery": ["surgery", "surgical", "laparotomy", "incision", "appendectomy", "resection"],
+            "pediatrics": ["child", "boy", "girl", "infant", "newborn", "pediatric", "year-old boy", "year-old girl"],
+            "neurology": ["stroke", "seizure", "headache", "neurological", "brain", "paralysis", "cranial"],
+            "emergency medicine": ["emergency", "trauma", "acute", "hypotension", "tachycardia", "resuscitation"],
+            "pulmonology": ["breath", "dyspnea", "pulmonary", "lung", "asthma", "copd", "pneumonia"],
+            "nephrology": ["kidney", "renal", "creatinine", "dialysis", "urinalysis", "urine"],
+            "gastroenterology": ["abdominal", "diarrhea", "vomiting", "liver", "jaundice", "bowel", "colon"],
+            "psychiatry": ["depression", "hallucination", "psychiatric", "mood", "schizophrenia", "anxiety"],
+            "obstetrics & gynaecology": ["pregnancy", "pregnant", "uterus", "vaginal", "ovarian", "trimester", "fetal"]
         }
-    return random.choice(questions)
+        kw_list = keywords_map.get(spec_clean, [spec_clean])
+        matching = [
+            q for q in all_q
+            if any(kw in q.get("question", "").lower() for kw in kw_list)
+        ]
+        if matching:
+            return random.choice(matching)
+    return random.choice(all_q)
 
 
 def _build_response(text: str) -> dict:
@@ -590,18 +610,21 @@ def _build_response(text: str) -> dict:
 
 
 def _start_quiz(session_id: str, specialty: str | None = None, show_intro: bool = True) -> JSONResponse:
-    q = _get_random_question()
-    opts = "\n".join([f"{k}) {v}" for k, v in q.get("options", {}).items()])
+    q = _get_random_question(specialty=specialty)
+    # Double newlines between options so _format_bubbles splits A), B), C), D) into 4 separate speech bubbles!
+    opts = "\n\n".join([f"{k}) {v.strip()}" for k, v in q.get("options", {}).items()])
     letters = ", ".join(q.get("options", {}).keys())
-    if show_intro:
-        question_text = f"Quiz Time!\n\n{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
-    else:
-        question_text = f"{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
+    
+    intro_prefix = ""
+    if specialty:
+        intro_prefix = f"Here is a high-yield USMLE board question focusing on {specialty}:\n\n"
+    elif show_intro:
+        intro_prefix = "Quiz Time!\n\n"
+
+    question_text = f"{intro_prefix}{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
+
     _quiz_sessions[session_id] = q
     _last_quiz[session_id] = q  # Save for explanation follow-up
-    if specialty:
-        combined = "I can't filter based on a specialty yet. Here's a random question:\n\n" + question_text
-        return JSONResponse(content=_build_response(combined))
     return JSONResponse(content=_build_response(question_text))
 
 
@@ -639,7 +662,7 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     # Vague or invalid response handling
     vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT"]
     if not selected_letter or (user_input_clean in vague_phrases and selected_letter not in valid_letters):
-        opts = "\n".join([f"{k}) {v}" for k, v in options.items()])
+        opts = "\n\n".join([f"{k}) {v.strip()}" for k, v in options.items()])
         letters = ", ".join(valid_letters)
         text = (
             f"Please reply with one of the option letters: {letters}.\n\n"
@@ -672,8 +695,14 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     _sessions[session_id] = _sessions.get(session_id, {})
     _sessions[session_id]["quiz_followup"] = True
 
-    # Prompt for explanation follow-up and offer another quiz
-    followup = "\n\nReply 'explain' if you'd like an explanation.\nWant to try another one?"
+    # Prompt for explanation follow-up with natural phrasing
+    natural_followups = [
+        "\n\nLet me know if you'd like an explanation of the clinical reasoning, or say 'next' for another question!",
+        "\n\nFeel free to ask if you'd like me to break down why that's correct, or let me know if you want another board question!",
+        "\n\nLet me know if you'd like a breakdown of why that's the right choice, or say 'next' to keep going!",
+        "\n\nWant me to explain the diagnostic rationale? Just let me know, or say 'next' for the next case!"
+    ]
+    followup = random.choice(natural_followups)
     text = feedback + followup
     return JSONResponse(content=_build_response(text))
 
