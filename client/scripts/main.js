@@ -332,11 +332,62 @@ window.addEventListener('DOMContentLoaded', function () {
         closeBtn.addEventListener('click', () => drawer.classList.add('emma-hidden'));
     }
 
-    // Show teaser after 2s delay on first page load
+    // ── Dynamic Question Bank & Teaser Prompts ─────────────────────────────
+    let hasInitializedChatMessages = false;
+    const initialGreeting = "Hi there! I am EMMA, your emergency medicine mentoring agent. Ask me about emergency conditions, or test yourself with a quick quiz!";
+
+    function initChatMessages(teaserText) {
+        if (!messages || hasInitializedChatMessages) return;
+        hasInitializedChatMessages = true;
+
+        const disclaimer = messages.querySelector('.emma-disclaimer-banner');
+        messages.innerHTML = '';
+        if (disclaimer) messages.appendChild(disclaimer);
+
+        // Message 1: Main introductory greeting
+        const msg1 = document.createElement('div');
+        msg1.className = 'emma-msg emma-msg-ai';
+        msg1.textContent = initialGreeting;
+        messages.appendChild(msg1);
+
+        // Message 2: Dynamic teaser prompt / question
+        if (teaserText) {
+            const msg2 = document.createElement('div');
+            msg2.className = 'emma-msg emma-msg-ai';
+            msg2.textContent = teaserText;
+            messages.appendChild(msg2);
+        }
+
+        messages.scrollTop = messages.scrollHeight;
+    }
+
     if (teaser) {
+        const textSpan = teaser.querySelector('span');
+
+        fetch('/teaser')
+            .then(res => res.json())
+            .then(data => {
+                const prompt = (data && data.teaser) ? data.teaser : "Ready to prep? Ask me about symptoms, diagnosis, or treatment for any condition!";
+                if (textSpan) textSpan.textContent = prompt;
+                initChatMessages(prompt);
+            })
+            .catch(() => {
+                const FALLBACK_PROMPTS = [
+                    "Ready to prep? Ask me about symptoms, diagnosis, or treatment for any condition, or start with heart attack symptoms!",
+                    "Can you name the FAST signs of a stroke? Ask EMMA to review acute stroke guidelines!",
+                    "What's the first test you'd order for a suspected pulmonary embolism?"
+                ];
+                const fallback = FALLBACK_PROMPTS[Math.floor(Math.random() * FALLBACK_PROMPTS.length)];
+                if (textSpan) textSpan.textContent = fallback;
+                initChatMessages(fallback);
+            });
+
+        // Show teaser after 1.8s delay on page load if drawer is closed
         setTimeout(() => {
-            teaser.classList.remove('emma-hidden');
-        }, 2000);
+            if (drawer && drawer.classList.contains('emma-hidden')) {
+                teaser.classList.remove('emma-hidden');
+            }
+        }, 1800);
     }
 
     // ── Save Dropdown Menu ─────────────────────────────────────────────

@@ -645,13 +645,14 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     valid_letters = [k.upper() for k in options.keys()]
     user_input_clean = user_input.strip().upper()
 
-    # Accept answers like "A", "B", "C", "D", "What about B", "Is it B?", or full option text
+    # Accept answers like "A", "B", "C", "D", "E", "What about B", "Is it E?", or full option text
     selected_letter = None
     if user_input_clean in valid_letters:
         selected_letter = user_input_clean
     else:
-        # Regex search for single option letter in conversational phrase ("What about B", "I think C")
-        match = re.search(r"\b([A-D])\b", user_input_clean)
+        # Dynamic regex search for single option letter (A, B, C, D, E...) in conversational phrase
+        pattern = r"\b(" + "|".join(valid_letters) + r")\b"
+        match = re.search(pattern, user_input_clean)
         if match and match.group(1) in valid_letters:
             selected_letter = match.group(1)
         else:
@@ -664,27 +665,25 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     # Vague or invalid response handling
     vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT"]
     if not selected_letter or (user_input_clean in vague_phrases and selected_letter not in valid_letters):
-        opts = "\n\n".join([f"{k}) {v.strip()}" for k, v in options.items()])
-        letters = ", ".join(valid_letters)
-        text = (
-            f"Please reply with one of the option letters: {letters}.\n\n"
-            f"{q.get('question','')}\n\n{opts}"
-        )
+        letters_str = ", ".join(valid_letters[:-1]) + f", or {valid_letters[-1]}" if len(valid_letters) > 1 else (valid_letters[0] if valid_letters else "A, B, C, D")
+        text = f"Please reply with one of the option letters: {letters_str}."
         return JSONResponse(content=_build_response(text))
 
     # Feedback
     correct = (selected_letter == correct_letter)
     feedback_correct = [
-        "Correct! Well done.",
-        "That's right!",
-        "Nice job, that's the correct answer.",
-        "You got it!"
+        "Spot on! Excellent clinical reasoning.",
+        "Nailed it! Great job working through that case.",
+        "Brilliant! That's the exact right choice.",
+        "Awesome work! You got it right.",
+        "Great clinical judgment! You got the right answer."
     ]
     feedback_incorrect = [
-        f"Incorrect. The correct answer was {correct_letter}) {options.get(correct_letter, '')}.",
-        f"Not quite. The answer is {correct_letter}) {options.get(correct_letter, '')}.",
-        f"That's not right. The correct answer: {correct_letter}) {options.get(correct_letter, '')}.",
-        f"Oops, it's actually {correct_letter}) {options.get(correct_letter, '')}."
+        f"Good effort! The key finding actually points to {correct_letter}) {options.get(correct_letter, '')}.",
+        f"That was a tricky case! The most appropriate step is actually {correct_letter}) {options.get(correct_letter, '')}.",
+        f"Nice try! In this clinical scenario, the correct choice is actually {correct_letter}) {options.get(correct_letter, '')}.",
+        f"Good attempt! The target diagnostic choice here is actually {correct_letter}) {options.get(correct_letter, '')}.",
+        f"Close try! The recommended management step is actually {correct_letter}) {options.get(correct_letter, '')}."
     ]
     feedback = random.choice(feedback_correct if correct else feedback_incorrect)
 
@@ -985,12 +984,12 @@ def _handle_conversational_or_meta(message: str) -> str | None:
     }
     if m in _GREETINGS_EXACT or any(m.startswith(g + " ") for g in ["hi", "hello", "hey", "sup", "yo", "howdy"]):
         return random.choice([
-            "Hey! Good to see you. What's on your mind — got a clinical question or want to run through a quick quiz?",
-            "Hi there! I'm here and ready. Ask me anything emergency medicine — symptoms, diagnosis, management, whatever you need.",
+            "Hey! Good to see you. What's on your mind: got a clinical question or want to run through a quick quiz?",
+            "Hi there! I'm here and ready. Ask me anything emergency medicine: symptoms, diagnosis, management, whatever you need.",
             "Hey! What can I help you with today? You can ask me about any emergency condition, or type quiz if you want to test yourself.",
             "Hello! What would you like to explore today? I cover everything from sepsis management to stroke diagnosis.",
             "Hi! Good timing. Ask me any clinical question or say quiz and I'll throw a board-style question at you.",
-            "Hey, what's up! I'm EMMA — ask me about any emergency medicine topic and I'll walk you through it.",
+            "Hey, what's up! I'm EMMA. Ask me about any emergency medicine topic and I'll walk you through it.",
         ])
 
     # 5. Off-topic redirection (weather, sports, coding, movies, etc.)
@@ -1116,4 +1115,41 @@ async def list_conditions():
     return {
         "conditions": [{"key": k, **v} for k, v in _CONDITION_META().items()],
         "note": "The RAG pipeline answers open-domain queries beyond this list.",
+    }
+
+
+@app.get("/teaser")
+async def get_teaser():
+    """Return a dynamic teaser — either the 'Ready to prep?' intro or an authentic question stem from MedQA."""
+    import random
+    
+    if random.random() < 0.5:
+        try:
+            from src.data import load_medqa
+            df = load_medqa(split="dev", n=50)
+            if df is not None and not df.empty:
+                row = df.sample(1).iloc[0]
+                q_text = str(row.get("question", "")).strip()
+                if q_text:
+                    parts = re.split(r'(?<=[.!?])\s+', q_text)
+                    short_stem = parts[0] if len(parts[0]) <= 110 else parts[0][:105] + "..."
+                    return {
+                        "teaser": f"USMLE Prep: {short_stem}",
+                        "type": "question_stem",
+                    }
+        except Exception as exc:
+            logger.debug("Failed to load MedQA teaser question (%s)", exc)
+
+    GREETINGS = [
+        "Ready to prep? Ask me about symptoms, diagnosis, or treatment for any condition, or start with heart attack symptoms!",
+        "Can you name the FAST signs of a stroke? Ask EMMA to review acute stroke guidelines!",
+        "What's the first test you'd order for a suspected pulmonary embolism?",
+        "Do you know the 3 cardinal signs of aortic stenosis? Ask EMMA or type 'quiz' to test your knowledge!",
+        "What is the first-line treatment for acute anaphylaxis? Test your board knowledge with EMMA!",
+        "Can you differentiate DKA from HHS? Ask EMMA for high-yield emergency pearls or try a quiz!",
+        "What ECG finding is pathognomonic for pericarditis? Ask EMMA or practice USMLE board questions!"
+    ]
+    return {
+        "teaser": random.choice(GREETINGS),
+        "type": "greeting",
     }

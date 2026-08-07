@@ -632,6 +632,12 @@ def generate_answer_groq(prompt: str, history: list[dict] | None = None) -> tupl
 
 _inference_warned: set[str] = set()
 
+def _sanitize_em_dashes(text: str) -> str:
+    if not text:
+        return text
+    return text.replace("—", ": ").replace(" -- ", ": ").replace("--", ": ")
+
+
 def generate_answer(
     prompt:     str,
     model_cfg:  dict,
@@ -644,14 +650,6 @@ def generate_answer(
 ) -> tuple[str, str, str]:
     """
     Unified inference entry point.
-
-    Priority
-    --------
-    1. Cloud APIs — Gemini API (GEMINI_API_KEY) or Groq API (GROQ_API_KEY).
-       Ultra-fast (< 400ms), 0 MB RAM cost on Render Free Tier.
-    2. Ollama — tried when ollama_tag is present in model_cfg AND Ollama is reachable.
-    3. HuggingFace transformers — used if Ollama/Cloud APIs are unavailable.
-
     Returns (answer_text, thinking_text, backend)
     """
     # ── Try Cloud APIs First (Zero Memory, Sub-400ms) ─────────────────────────
@@ -659,7 +657,7 @@ def generate_answer(
         try:
             print("  [inference] Using Google Gemini Cloud API...")
             answer, thinking = generate_answer_gemini(prompt, history=history)
-            return answer, thinking, "gemini-cloud"
+            return _sanitize_em_dashes(answer), _sanitize_em_dashes(thinking), "gemini-cloud"
         except Exception as exc:
             warn_key = f"gemini_failed:{exc}"
             if warn_key not in _inference_warned:
@@ -670,7 +668,7 @@ def generate_answer(
         try:
             print("  [inference] Using Groq Cloud API...")
             answer, thinking = generate_answer_groq(prompt, history=history)
-            return answer, thinking, "groq-cloud"
+            return _sanitize_em_dashes(answer), _sanitize_em_dashes(thinking), "groq-cloud"
         except Exception as exc:
             warn_key = f"groq_failed:{exc}"
             if warn_key not in _inference_warned:
@@ -697,7 +695,7 @@ def generate_answer(
                 answer, thinking = generate_answer_ollama(
                     prompt, model_cfg, think=think, base_url=ollama_url, history=history
                 )
-                return answer, thinking, "ollama"
+                return _sanitize_em_dashes(answer), _sanitize_em_dashes(thinking), "ollama"
             except Exception as exc:
                 warn_key = f"failed:{ollama_tag}"
                 if warn_key not in _inference_warned:
@@ -718,7 +716,7 @@ def generate_answer(
     answer, thinking = generate_answer_hf(
         prompt, hf_model, hf_tokenizer, model_cfg, think=think, history=history
     )
-    return answer, thinking, "hf"
+    return _sanitize_em_dashes(answer), _sanitize_em_dashes(thinking), "hf"
 
 
 # ── Main retriever class ──────────────────────────────────────────────────────
