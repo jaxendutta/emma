@@ -486,6 +486,18 @@ window.addEventListener('DOMContentLoaded', function () {
             const text = input.value.trim();
             if (!text) return;
 
+            const submitBtn = form.querySelector('button[type="submit"]');
+
+            // Disable input while request is in flight
+            input.disabled = true;
+            if (submitBtn) submitBtn.disabled = true;
+
+            function reenableInput() {
+                input.disabled = false;
+                if (submitBtn) submitBtn.disabled = false;
+                input.focus();
+            }
+
             // Append User Message
             const userDiv = document.createElement('div');
             userDiv.className = 'emma-msg emma-msg-user';
@@ -561,49 +573,30 @@ window.addEventListener('DOMContentLoaded', function () {
                     messages.removeChild(typingDiv);
                 }
 
-                // Append AI Response (split into individual speech bubbles per paragraph & MCQ option)
+                // Append AI Response into a single speech bubble
                 const answerText = data.answer || data.text || "Sorry, I didn't receive a valid response.";
-                const rawParagraphs = answerText.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
-                const paragraphs = [];
-
-                rawParagraphs.forEach(p => {
-                    if (/^[A-G]\)\s+/m.test(p) && (p.match(/^[A-G]\)\s+/gm) || []).length > 1) {
-                        const optionLines = p.split(/(?=\n?[A-G]\)\s+)/).map(opt => opt.trim()).filter(Boolean);
-                        paragraphs.push(...optionLines);
-                    } else {
-                        paragraphs.push(p);
-                    }
-                });
-
-                if (paragraphs.length === 0) {
-                    paragraphs.push(answerText);
+                const aiDiv = document.createElement('div');
+                aiDiv.className = 'emma-msg emma-msg-ai emma-pop-in';
+                const normalizedText = answerText.replace(/^[•·]\s*/gm, '- ');
+                if (window.marked) {
+                    aiDiv.innerHTML = window.marked.parse(normalizedText);
+                } else {
+                    aiDiv.textContent = answerText;
                 }
-
-                paragraphs.forEach((para, idx) => {
-                    setTimeout(() => {
-                        const aiDiv = document.createElement('div');
-                        aiDiv.className = 'emma-msg emma-msg-ai emma-pop-in';
-                        const normalizedPara = para.replace(/^[•·]\s*/gm, '- ');
-                        if (window.marked) {
-                            aiDiv.innerHTML = window.marked.parse(normalizedPara);
-                        } else {
-                            aiDiv.textContent = para;
-                        }
-                        if (window.renderMathInElement) {
-                            window.renderMathInElement(aiDiv, {
-                                delimiters: [
-                                    { left: '$$', right: '$$', display: true },
-                                    { left: '$', right: '$', display: false },
-                                    { left: '\\(', right: '\\)', display: false },
-                                    { left: '\\[', right: '\\]', display: true }
-                                ],
-                                throwOnError: false
-                            });
-                        }
-                        messages.appendChild(aiDiv);
-                        messages.scrollTop = messages.scrollHeight;
-                    }, idx * 280);
-                });
+                if (window.renderMathInElement) {
+                    window.renderMathInElement(aiDiv, {
+                        delimiters: [
+                            { left: '$$', right: '$$', display: true },
+                            { left: '$', right: '$', display: false },
+                            { left: '\\(', right: '\\)', display: false },
+                            { left: '\\[', right: '\\]', display: true }
+                        ],
+                        throwOnError: false
+                    });
+                }
+                messages.appendChild(aiDiv);
+                messages.scrollTop = messages.scrollHeight;
+                reenableInput();
             } catch (err) {
                 if (wakeupTimer) clearTimeout(wakeupTimer);
                 if (messages.contains(typingDiv)) {
@@ -614,6 +607,7 @@ window.addEventListener('DOMContentLoaded', function () {
                 errDiv.textContent = 'Connection error. Please ensure the backend server is running.';
                 messages.appendChild(errDiv);
                 messages.scrollTop = messages.scrollHeight;
+                reenableInput();
             }
         });
     }

@@ -593,8 +593,8 @@ def _build_response(text: str) -> dict:
 
 def _start_quiz(session_id: str, specialty: str | None = None, show_intro: bool = True) -> JSONResponse:
     q = _get_random_question(specialty=specialty)
-    # Double newlines between options so _format_bubbles splits A), B), C), D) into 4 separate speech bubbles!
-    opts = "\n\n".join([f"{k}) {v.strip()}" for k, v in q.get("options", {}).items()])
+    # Single newlines between options for clean MCQ formatting block
+    opts = "\n".join([f"{k}) {v.strip()}" for k, v in q.get("options", {}).items()])
     letters = ", ".join(q.get("options", {}).keys())
     
     intro_prefix = ""
