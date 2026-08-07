@@ -1,0 +1,293 @@
+/* ── Graph tab ─────────────────────────────────────────────────────────────── */
+
+#tab-graph {
+    height: calc(100vh - 56px);
+    overflow: hidden;
+    display: none;
+}
+
+#tab-graph.active {
+    display: block;
+}
+
+#graph-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    overflow: hidden;
+}
+
+#graph-container svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+}
+
+#graph-container svg:active {
+    cursor: grabbing;
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────────────── */
+.graph-toolbar {
+    position: absolute;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(250, 248, 245, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 40px;
+    padding: 5px 6px 5px 7px;
+    box-shadow: 0 2px 16px rgba(42, 36, 32, 0.1);
+    /* size to content on desktop — no overflow issues */
+    width: max-content;
+    max-width: calc(100vw - 32px);
+}
+
+/* Legend items — no mask on desktop, all pills visible */
+.graph-legend-items {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.graph-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    font-weight: 400;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.graph-pill.active {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.graph-pill[data-type="condition"] {
+    cursor: default;
+}
+
+.graph-pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+
+.graph-pill.active .graph-pill-dot {
+    opacity: 1;
+}
+
+/* ── Reset button ─────────────────────────────────────────────────────────── */
+.graph-reset {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+    margin-left: 4px;
+    padding: 4px;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.graph-reset:hover {
+    background: var(--light);
+    color: var(--accent);
+    border-color: #b7e4c7;
+}
+
+/* ── Info panel — desktop ─────────────────────────────────────────────────── */
+.graph-info {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    z-index: 20;
+    background: rgba(250, 248, 245, 0.96);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    max-width: 280px;
+    box-shadow: 0 2px 20px rgba(42, 36, 32, 0.12);
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.graph-info.hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+}
+
+.info-header {
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.info-title {
+    font-family: var(--serif);
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.3;
+    padding: 2px 0 10px;
+}
+
+.info-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 8px;
+}
+
+.info-group:last-child {
+    margin-bottom: 0;
+}
+
+.info-group-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.info-group-items {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+/* ── Hint ─────────────────────────────────────────────────────────────────── */
+.graph-hint {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    z-index: 10;
+    font-family: var(--sans);
+    font-size: 0.72rem;
+    color: var(--muted);
+    pointer-events: none;
+    transition: opacity 0.3s;
+    font-style: italic;
+    opacity: 0.6;
+}
+
+.graph-hint.hidden {
+    opacity: 0;
+}
+
+/* ── Mobile ───────────────────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+
+    /* Toolbar: full width, pills SCROLL horizontally, zero visible scrollbar */
+    .graph-toolbar {
+        top: 10px;
+        left: 12px;
+        right: 12px;
+        width: auto;
+        transform: none;
+        max-width: none;
+        padding: 3px 4.5px 3px 7px;
+        overflow: hidden;
+        /* clips the pill list */
+    }
+
+    .graph-legend-items {
+        flex: 1;
+        min-width: 0;
+        /* scrollable but no scrollbar — this is the key: overflow-x auto + hide scrollbar */
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+        /* Firefox */
+        -ms-overflow-style: none;
+        /* IE/Edge */
+        /* right fade to signal overflow — only visible when there's overflow */
+        -webkit-mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+        mask-image: linear-gradient(to right, black calc(100% - 24px), transparent 100%);
+        padding-right: 5px;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    /* Hide webkit scrollbar on the pill list */
+    .graph-legend-items::-webkit-scrollbar {
+        display: none;
+    }
+
+    .graph-pill {
+        font-size: 0.65rem;
+        padding: 3px 8px;
+    }
+
+    /* Bottom sheet — transform-only transitions, no opacity conflict with .hidden */
+    .graph-info {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        top: auto;
+        max-width: none;
+        max-height: 50vh;
+        border-radius: 28px 28px 0 0;
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
+        padding: 10px 20px 40px;
+        overflow-y: auto;
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        /* transform-only transition — reliable on iOS Safari */
+        transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+        transform: translateY(0);
+        /* opacity must stay 1 on mobile — .hidden uses transform only */
+        opacity: 1 !important;
+        pointer-events: auto;
+        /* prevent pull-to-refresh from triggering when dragging the sheet */
+        overscroll-behavior: contain;
+    }
+
+    .graph-info::-webkit-scrollbar {
+        display: none;
+    }
+
+    /* hidden = slid fully below viewport */
+    .graph-info.hidden {
+        transform: translateY(110%);
+        pointer-events: none;
+    }
+
+    .graph-hint {
+        display: none;
+    }
+}
