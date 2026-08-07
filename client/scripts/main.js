@@ -522,12 +522,23 @@ window.addEventListener('DOMContentLoaded', function () {
                     window.sessionStorage.setItem('emma_sid', sid);
                 }
 
+                // Gather current conversation history from DOM so LLM sees full context (including teasers & greetings)
+                const historyPayload = [];
+                messages.querySelectorAll('.emma-msg').forEach(div => {
+                    if (div.classList.contains('emma-msg-typing')) return;
+                    const isUserMsg = div.classList.contains('emma-msg-user');
+                    const contentStr = (div.innerText || div.textContent || '').trim();
+                    if (contentStr) {
+                        historyPayload.push({ role: isUserMsg ? 'user' : 'assistant', content: contentStr });
+                    }
+                });
+
                 let res;
                 try {
                     res = await fetch(apiUrl, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ message: text, session_id: sid })
+                        body: JSON.stringify({ message: text, session_id: sid, history: historyPayload })
                     });
                 } catch (localErr) {
                     // Fallback to live Render endpoint if local port 8080 is down
@@ -535,7 +546,7 @@ window.addEventListener('DOMContentLoaded', function () {
                         res = await fetch('https://emma-webhook.onrender.com/chat', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ message: text, session_id: sid })
+                            body: JSON.stringify({ message: text, session_id: sid, history: historyPayload })
                         });
                     } else {
                         throw localErr;
@@ -550,9 +561,20 @@ window.addEventListener('DOMContentLoaded', function () {
                     messages.removeChild(typingDiv);
                 }
 
-                // Append AI Response (split into individual speech bubbles per paragraph)
+                // Append AI Response (split into individual speech bubbles per paragraph & MCQ option)
                 const answerText = data.answer || data.text || "Sorry, I didn't receive a valid response.";
-                const paragraphs = answerText.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+                const rawParagraphs = answerText.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+                const paragraphs = [];
+
+                rawParagraphs.forEach(p => {
+                    if (/^[A-G]\)\s+/m.test(p) && (p.match(/^[A-G]\)\s+/gm) || []).length > 1) {
+                        const optionLines = p.split(/(?=\n?[A-G]\)\s+)/).map(opt => opt.trim()).filter(Boolean);
+                        paragraphs.push(...optionLines);
+                    } else {
+                        paragraphs.push(p);
+                    }
+                });
+
                 if (paragraphs.length === 0) {
                     paragraphs.push(answerText);
                 }

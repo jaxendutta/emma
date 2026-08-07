@@ -303,6 +303,11 @@ h1 em {
     color: var(--text);
 }
 
+.emma-teaser,
+.emma-teaser * {
+    font-weight: 400 !important;
+}
+
 .emma-teaser {
     position: fixed;
     bottom: 92px;

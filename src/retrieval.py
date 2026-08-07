@@ -635,7 +635,9 @@ _inference_warned: set[str] = set()
 def _sanitize_em_dashes(text: str) -> str:
     if not text:
         return text
-    return text.replace("—", ": ").replace(" -- ", ": ").replace("--", ": ")
+    text = text.replace("—", ": ").replace(" -- ", ": ").replace("--", ": ")
+    text = text.replace("**", "").replace("__", "")
+    return text
 
 
 def generate_answer(

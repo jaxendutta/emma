@@ -663,8 +663,15 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
                     break
 
     # Vague or invalid response handling
-    vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT"]
-    if not selected_letter or (user_input_clean in vague_phrases and selected_letter not in valid_letters):
+    vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT", "IDK YOU TELL ME", "YOU TELL ME", "TELL ME"]
+    if not selected_letter:
+        # Clear stale/lingering quiz session if user is speaking conversationally rather than answering MCQ
+        if any(p in user_input_clean for p in ["YOU TELL ME", "TELL ME", "FAST", "STROKE", "WHAT IS IT", "WHAT ARE"]):
+            del _quiz_sessions[session_id]
+            conv = _handle_conversational_or_meta(user_input)
+            if conv:
+                return JSONResponse(content=_build_response(conv))
+
         letters_str = ", ".join(valid_letters[:-1]) + f", or {valid_letters[-1]}" if len(valid_letters) > 1 else (valid_letters[0] if valid_letters else "A, B, C, D")
         text = f"Please reply with one of the option letters: {letters_str}."
         return JSONResponse(content=_build_response(text))
@@ -992,7 +999,24 @@ def _handle_conversational_or_meta(message: str) -> str | None:
             "Hey, what's up! I'm EMMA. Ask me about any emergency medicine topic and I'll walk you through it.",
         ])
 
-    # 5. Off-topic redirection (weather, sports, coding, movies, etc.)
+    # 5. Response to Teaser Prompts & "idk / you tell me"
+    if any(k in m for k in ["fast sign", "fast stroke", "stroke sign", "name the fast", "fast"]):
+        return (
+            "The FAST signs of an acute stroke are:\n\n"
+            "• F — Face Drooping: Is one side of the face drooping or numb?\n"
+            "• A — Arm Weakness: Is one arm weak or drifting downward when raised?\n"
+            "• S — Speech Difficulty: Is speech slurred, strange, or hard to understand?\n"
+            "• T — Time: Time to call emergency services immediately!\n\n"
+            "Would you like to review acute stroke management protocols or try a clinical board question?"
+        )
+
+    if any(k in m for k in ["you tell me", "idk you tell me", "idk tell me", "tell me", "what is it", "what is the answer"]):
+        return (
+            "No problem, I've got you covered! For acute stroke, remember the FAST signs (Face drooping, Arm weakness, Speech difficulty, Time to call emergency services!).\n\n"
+            "What clinical topic or condition would you like to review next, or would you like to try a board quiz?"
+        )
+
+    # 6. Off-topic redirection (weather, sports, coding, movies, etc.)
     _OFF_TOPIC_KEYWORDS = ["weather", "sports", "football", "basketball", "movie", "film", "song", "recipe", "python code", "stock market"]
     if any(k in m for k in _OFF_TOPIC_KEYWORDS):
         return (
@@ -1042,6 +1066,7 @@ async def chat(request: Request) -> JSONResponse:
             message = body["messages"][-1].get("text", "").strip()
         session_id = body.get("session_id", "chat-default")
         think      = bool(body.get("think", False))
+        client_history = body.get("history")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     if not message:
@@ -1059,7 +1084,7 @@ async def chat(request: Request) -> JSONResponse:
     if RAG_ENABLED:
         logger.info("Chat | RAG Direct Inference | think=%s | query=%r", think, message[:80])
         session = _session_get(session_id)
-        history = session.get("history", [])
+        history = client_history if (client_history and isinstance(client_history, list)) else session.get("history", [])
 
         answer = await _rag_response("direct", message, think=think, history=history)
 

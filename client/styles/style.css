@@ -989,6 +989,14 @@ body.tab-graph df-messenger {
     background: #ffffff;
 }
 
+.emma-messages *,
+.emma-msg,
+.emma-msg *,
+.emma-teaser,
+.emma-teaser * {
+    font-weight: 400 !important;
+}
+
 @keyframes emmaPopIn {
     0% {
         opacity: 0;
