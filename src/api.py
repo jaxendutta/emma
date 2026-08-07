@@ -363,15 +363,6 @@ def _build_rag_query(intent_key: str, condition_name: str | None, raw_query: str
 
 # ── Async RAG for /chat and /query (no deadline) ──────────────────────────────
 
-def _rag_response_sync(query: str, think: bool = False, history: list[dict] | None = None) -> str:
-    retriever = _get_retriever()
-    result    = retriever.answer(query, use_rag=True, think=think, history=history)
-    answer    = result.answer.strip()
-    if not answer:
-        raise ValueError("Empty answer from retriever")
-    return answer
-
-
 async def _rag_response(intent_key: str, query: str,
                         cond_key: str | None = None, think: bool = False,
                         history: list[dict] | None = None) -> str:
@@ -412,17 +403,6 @@ async def _rag_response(intent_key: str, query: str,
     if cond_key:
         return _static_response(intent_key, cond_key)
     return "I encountered an issue retrieving an answer. Please try again."
-
-    # ── Local retriever fallback (only when no cloud key is configured) ────────
-    loop = asyncio.get_event_loop()
-    try:
-        return await loop.run_in_executor(
-            _executor, lambda: _rag_response_sync(query, think=think))
-    except Exception as exc:
-        logger.warning("RAG async failed (intent=%s): %s", intent_key, exc)
-        if cond_key:
-            return _static_response(intent_key, cond_key)
-        return "I encountered an issue retrieving an answer. Please try again."
 
 
 
