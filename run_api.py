@@ -1,118 +1,90 @@
 """
-Start the EMMA FastAPI webhook server.
+Start the EMMA API + static frontend with one command.
 
 Usage
 -----
-    uv run python run_api.py                        # static knowledge only
-    uv run python run_api.py --rag                  # enable RAG pipeline
-    uv run python run_api.py --rag --model qwen3-4b
+    uv run python run_api.py          # API on :8080, frontend on :8001
+    uv run python run_api.py --rag    # same but with RAG / Cloud LLM enabled
     uv run python run_api.py --port 9000
-    uv run python run_api.py --rag --no-reload      # production-style (no auto-reload)
 
-Endpoints
----------
-    GET  /health         service health + feature flags
-    POST /webhook        Dialogflow ES webhook
-    POST /query          direct query (bypass Dialogflow, for testing)
-    GET  /conditions     list of evaluation-domain conditions
-
-Dialogflow setup
-----------------
-    1. Start this server, then expose it via ngrok:
-           ngrok http 8000
-    2. In the Dialogflow ES console:
-           Fulfillment -> Webhook -> URL: https://<ngrok-id>.ngrok.io/webhook
-    3. Enable webhook for each intent (GetSymptoms, GetDiagnosis, etc.)
+Frontend
+--------
+    http://localhost:8001/?tab=home   <- open this in your browser
 """
 
 import argparse
 import os
+import subprocess
+import sys
+import threading
+import time
 
-import uvicorn
 from dotenv import load_dotenv
 
-load_dotenv()  # populate os.environ from .env before uvicorn forks workers
+load_dotenv()
 
 
 def parse_args():
     p = argparse.ArgumentParser(
         prog="run_api",
-        description="EMMA FastAPI webhook server",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "examples:\n"
-            "  uv run python run_api.py\n"
-            "  uv run python run_api.py --rag\n"
-            "  uv run python run_api.py --rag --model qwen3-4b\n"
-            "  uv run python run_api.py --rag --port 9000 --no-reload"
-        ),
+        description="EMMA API + frontend dev server",
     )
     p.add_argument(
         "--rag",
         action="store_true",
         default=False,
-        help="Enable the RAG pipeline (requires Ollama + model artefacts in models/)",
+        help="Enable Cloud LLM / RAG (requires GEMINI_API_KEY or GROQ_API_KEY in .env)",
     )
-    p.add_argument(
-        "--model",
-        metavar="MODEL_ID",
-        default=None,
-        help="Ollama model to use (default: value of 'default_model' in config/models.json)",
-    )
-    p.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        metavar="PORT",
-        help="Port to listen on (default: 8000)",
-    )
-    p.add_argument(
-        "--host",
-        default="0.0.0.0",
-        metavar="HOST",
-        help="Host to bind to (default: 0.0.0.0)",
-    )
-    p.add_argument(
-        "--no-reload",
-        action="store_true",
-        default=False,
-        help="Disable auto-reload on file changes (use in production)",
-    )
+    p.add_argument("--port", type=int, default=8080, metavar="PORT",
+                   help="API port (default: 8080)")
+    p.add_argument("--frontend-port", type=int, default=8001,
+                   metavar="FRONTEND_PORT", dest="frontend_port",
+                   help="Frontend port (default: 8001)")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
 
-    # Flags -> env vars so api.py picks them up without any import-time changes
-    os.environ["EMMA_USE_RAG"] = "true" if args.rag else "false"
-    if args.model:
-        os.environ["EMMA_MODEL_ID"] = args.model
-
-    print("=" * 52)
-    print("  EMMA  —  FastAPI Webhook")
-    print("=" * 52)
-    print(f"  Host     : {args.host}:{args.port}")
     if args.rag:
-        model_label = args.model or "default from config/models.json"
-        print(f"  RAG      : ENABLED  ({model_label})")
-    else:
-        print("  RAG      : DISABLED  (static knowledge only)")
-    print(f"  Reload   : {'off' if args.no_reload else 'on'}")
-    print()
-    print(f"  GET   http://localhost:{args.port}/health")
-    print(f"  POST  http://localhost:{args.port}/webhook")
-    print(f"  POST  http://localhost:{args.port}/query")
-    print(f"  GET   http://localhost:{args.port}/conditions")
-    print("=" * 52)
+        os.environ["EMMA_USE_RAG"] = "true"
 
-    uvicorn.run(
-        "src.api:app",
-        host=args.host,
-        port=args.port,
-        reload=not args.no_reload,
-        log_level="info",
+    rag_enabled = os.environ.get("EMMA_USE_RAG", "false").lower() == "true"
+    client_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "client")
+
+    print("=" * 56)
+    print("  [ EMMA ] Local Dev Server")
+    print("=" * 56)
+    print(f"  API      : http://localhost:{args.port}/")
+    print(f"  Frontend : http://localhost:{args.frontend_port}/?tab=home  <- open this")
+    print(f"  RAG/LLM  : {'ENABLED' if rag_enabled else 'DISABLED  (add EMMA_USE_RAG=true to .env)'}")
+    print("=" * 56)
+    print()
+
+    # -- Frontend: spawn a separate python process for the static server so
+    #    it survives uvicorn's reload-mode forking (daemon threads don't).
+    frontend_proc = subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(args.frontend_port),
+         "--directory", client_dir, "--bind", "127.0.0.1"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
+
+    # Give the static server a moment to bind before printing the URL
+    time.sleep(0.5)
+
+    try:
+        # -- API: run uvicorn directly (blocking)
+        import uvicorn
+        uvicorn.run(
+            "src.api:app",
+            host="127.0.0.1",
+            port=args.port,
+            reload=True,
+            log_level="info",
+        )
+    finally:
+        frontend_proc.terminate()
 
 
 if __name__ == "__main__":

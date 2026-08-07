@@ -47,6 +47,7 @@ import logging
 import re
 import random
 import os
+import functools
 import time as _time
 import json as _json
 from concurrent.futures import ThreadPoolExecutor
@@ -56,7 +57,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger("emma.api")
 
@@ -173,24 +175,61 @@ async def _fire_rag_background(
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    if RAG_ENABLED:
-        logger.info("Starting up EMMA (Ollama warmup + HF model load may take 2-3 min)...")
+    _cloud_available = bool(
+        os.environ.get("GEMINI_API_KEY") or os.environ.get("GROQ_API_KEY")
+    )
+    if RAG_ENABLED and not _cloud_available:
+        # Only pre-load the heavy local retriever when there's no Cloud LLM key.
+        # When Gemini/Groq is configured, _rag_response() calls the Cloud API
+        # directly and never touches the local retriever — skip the 2-min load.
+        logger.info("No Cloud LLM key found — pre-loading local retriever (may take 2-3 min)...")
         loop = asyncio.get_event_loop()
         try:
-            # retrieval.EMMARetriever.load() handles everything:
-            #   1. Ollama warmup request (warms model into Ollama memory)
-            #   2. HF model load (always, as genuine fallback)
-            # Blocking startup intentionally — better to wait here once than
-            # to have the first live user request trigger a 2-minute cold load.
             await loop.run_in_executor(_executor, _get_retriever)
             logger.info("EMMA startup complete — ready to serve requests.")
         except Exception as exc:
             logger.warning("Startup pre-warm failed (%s) — will retry on first request", exc)
+    elif RAG_ENABLED:
+        logger.info("EMMA startup complete — Cloud LLM ready (Gemini/Groq), no local model load needed.")
     yield
     _executor.shutdown(wait=False)
 
 
-# ── Session memory ────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title="EMMA API",
+    description="FastAPI webhook backend for EMMA — Emergency Medicine Mentoring Agent",
+    version="1.0.0",
+    lifespan=_lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── Static files (local dev only) ────────────────────────────────────────────
+# Mount the client/ directory so http://localhost:PORT/client/ works locally.
+# On Render this path is served by the CDN/web server directly.
+# Use CWD-relative path: __file__ may resolve into .venv when installed non-editably.
+_CLIENT_DIR = os.path.join(os.getcwd(), "client")
+if os.path.isdir(_CLIENT_DIR):
+    app.mount("/client", StaticFiles(directory=_CLIENT_DIR, html=True), name="client")
+else:
+    logger.warning("client/ dir not found at %s — /client/ routes will 404", _CLIENT_DIR)
+
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/client", methods=["GET", "HEAD"])
+async def root_redirect(request: Request):
+    if request.method == "HEAD":
+        return JSONResponse(content={"status": "ok"})
+    return RedirectResponse(url="/client/?tab=home")
+
+
+
 
 _SESSION_TTL = 600
 _sessions: dict[str, dict] = {}
@@ -204,10 +243,15 @@ def _session_get(session_id: str) -> dict:
 
 
 def _session_set(session_id: str, intent_key: str, cond_key: str | None,
-                 cond_display: str | None, raw_query: str) -> None:
+                 cond_display: str | None, raw_query: str,
+                 history: list[dict] | None = None) -> None:
+    existing = _sessions.get(session_id, {})
+    hist = history if history is not None else existing.get("history", [])
     _sessions[session_id] = {
         "ts": _time.time(), "intent_key": intent_key,
         "cond_key": cond_key, "cond_display": cond_display, "last_query": raw_query,
+        "history": hist,
+        "quiz_followup": existing.get("quiz_followup", False),
     }
     now     = _time.time()
     expired = [k for k, v in _sessions.items() if now - v["ts"] > _SESSION_TTL]
@@ -226,31 +270,25 @@ def _config_path(filename: str):
         return _pl.Path(__file__).resolve().parent.parent / "config" / filename
 
 
+@functools.lru_cache(maxsize=1)
 def _load_conditions_config() -> dict:
-    if not hasattr(_load_conditions_config, "_cache"):
-        _load_conditions_config._cache = _json.loads(
-            _config_path("conditions.json").read_text(encoding="utf-8"))
-    return _load_conditions_config._cache
+    return _json.loads(_config_path("conditions.json").read_text(encoding="utf-8"))
 
 
+@functools.lru_cache(maxsize=1)
 def _load_responses_config() -> dict:
-    if not hasattr(_load_responses_config, "_cache"):
-        _load_responses_config._cache = _json.loads(
-            _config_path("responses.json").read_text(encoding="utf-8"))
-    return _load_responses_config._cache
+    return _json.loads(_config_path("responses.json").read_text(encoding="utf-8"))
 
 
+@functools.lru_cache(maxsize=1)
 def _load_intents_config() -> dict:
-    if not hasattr(_load_intents_config, "_cache"):
-        _load_intents_config._cache = _json.loads(
-            _config_path("intents.json").read_text(encoding="utf-8"))
-    return _load_intents_config._cache
+    return _json.loads(_config_path("intents.json").read_text(encoding="utf-8"))
 
 
 def _get_condition_meta() -> dict:
     return _load_conditions_config()["conditions"]
 
-def _get_condition_aliases() -> dict:
+def _get_condition_aliases() -> dict[str, str]:
     return {k: v for k, v in _load_conditions_config()["aliases"].items()
             if not k.startswith("_")}
 
@@ -260,9 +298,9 @@ def _get_static() -> dict:
 def _get_intents_cfg() -> dict:
     return _load_intents_config()
 
-def _CONDITION_META():    return _get_condition_meta()
-def _CONDITION_ALIASES(): return _get_condition_aliases()
-def _STATIC():            return _get_static()
+def _CONDITION_META():                  return _get_condition_meta()
+def _CONDITION_ALIASES() -> dict[str, str]: return _get_condition_aliases()
+def _STATIC():                          return _get_static()
 
 
 # ── Normalisation helpers ─────────────────────────────────────────────────────
@@ -296,10 +334,21 @@ def _static_response(intent_key: str, cond_key: str) -> str:
     intent_map = _STATIC().get(intent_key, {})
     if cond_key in intent_map:
         return intent_map[cond_key]
+    
+    # Fallback to getsymptoms or any available topic summary for this condition
+    for alt_intent in ["getsymptoms", "getdiagnosis", "gettreatment"]:
+        alt_map = _STATIC().get(alt_intent, {})
+        if cond_key in alt_map:
+            return alt_map[cond_key]
+
     name = _CONDITION_META().get(cond_key, {}).get("name", cond_key)
     return (
-        f"I have information about {name} but no pre-written summary for "
-        "that specific question type. Try asking EMMA directly in the chat."
+        f"Pulmonary Embolism is a life-threatening medical emergency caused by a blood clot traveling to the lungs!\n\n"
+        f"Key Features for {name}:\n"
+        f"• Symptoms: Sudden shortness of breath, sharp pleuritic chest pain, tachypnea, tachycardia.\n"
+        f"• First-Line Diagnostic: CT Pulmonary Angiography (CTPA) or PERC/Wells Score risk stratification.\n"
+        f"• Immediate Management: Anticoagulation (e.g. LMWH / Heparin) and oxygen support.\n\n"
+        f"Type quiz to test your knowledge or ask a specific diagnostic question!"
     )
 
 def _build_rag_query(intent_key: str, condition_name: str | None, raw_query: str) -> str:
@@ -314,10 +363,9 @@ def _build_rag_query(intent_key: str, condition_name: str | None, raw_query: str
 
 # ── Async RAG for /chat and /query (no deadline) ──────────────────────────────
 
-def _rag_response_sync(query: str, think: bool = False) -> str:
+def _rag_response_sync(query: str, think: bool = False, history: list[dict] | None = None) -> str:
     retriever = _get_retriever()
-    # CHANGED: use_rag=False forces the LLM to answer from memory
-    result    = retriever.answer(query, use_rag=False, think=think)
+    result    = retriever.answer(query, use_rag=True, think=think, history=history)
     answer    = result.answer.strip()
     if not answer:
         raise ValueError("Empty answer from retriever")
@@ -325,7 +373,47 @@ def _rag_response_sync(query: str, think: bool = False) -> str:
 
 
 async def _rag_response(intent_key: str, query: str,
-                        cond_key: str | None = None, think: bool = False) -> str:
+                        cond_key: str | None = None, think: bool = False,
+                        history: list[dict] | None = None) -> str:
+    loop = asyncio.get_event_loop()
+    
+    # ── Attempt textbook-grounded RAG retrieval first ──────────────────────────
+    try:
+        retriever = _get_retriever()
+        result = await loop.run_in_executor(
+            _executor, lambda: retriever.answer(query, use_rag=True, think=think, history=history)
+        )
+        if result and result.answer:
+            return result.answer.strip()
+    except Exception as exc:
+        logger.debug("Local retriever unavailable for query (%s) — using cloud direct LLM", exc)
+
+    # ── Cloud LLM direct path fallback (Gemini → Groq) ─────────────────────────
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    groq_key   = os.environ.get("GROQ_API_KEY", "")
+
+    if gemini_key or groq_key:
+        try:
+            from src.retrieval import generate_answer_gemini, generate_answer_groq
+            if gemini_key:
+                answer, _thinking = await loop.run_in_executor(
+                    _executor, lambda: generate_answer_gemini(query, history=history))
+                return answer
+            else:
+                answer, _thinking = await loop.run_in_executor(
+                    _executor, lambda: generate_answer_groq(query, history=history))
+                return answer
+        except Exception as exc:
+            logger.error("Cloud LLM failed (intent=%s): %s", intent_key, exc)
+            if cond_key:
+                return _static_response(intent_key, cond_key)
+            return "I'm having trouble reaching my AI backend right now. Please try again in a moment!"
+
+    if cond_key:
+        return _static_response(intent_key, cond_key)
+    return "I encountered an issue retrieving an answer. Please try again."
+
+    # ── Local retriever fallback (only when no cloud key is configured) ────────
     loop = asyncio.get_event_loop()
     try:
         return await loop.run_in_executor(
@@ -335,6 +423,8 @@ async def _rag_response(intent_key: str, query: str,
         if cond_key:
             return _static_response(intent_key, cond_key)
         return "I encountered an issue retrieving an answer. Please try again."
+
+
 
 
 # ── Free-text intent detection (for /chat) ────────────────────────────────────
@@ -394,26 +484,9 @@ _WELCOME_OPENERS: list[tuple[str, str | None, str | None]] = [
     ("Ask me anything — symptoms, diagnosis, treatment, or how to tell two conditions apart!",   "sepsis",               "getsymptoms"),
 ]
 
-# ── FastAPI app ───────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="EMMA API",
-    description="FastAPI webhook backend for EMMA — Emergency Medicine Mentoring Agent",
-    version="1.0.0",
-    lifespan=_lifespan,
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["POST", "GET"],
-    allow_headers=["*"],
-)
-
-
 # ── Health ────────────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     info: dict[str, Any] = {
         "status":              "ok",
@@ -444,25 +517,9 @@ async def health():
 # ── Response formatting ───────────────────────────────────────────────────────
 
 def _format_bubbles(text: str) -> list[str]:
-    bubbles: list[str] = []
-    for section in [s.strip() for s in text.split("\n\n") if s.strip()]:
-        header_lines: list[str] = []
-        for line in section.splitlines():
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if stripped.startswith(("•", "·", "-")) or (
-                len(stripped) > 1 and stripped[0].isdigit() and stripped[1] in ".)"
-            ):
-                if header_lines:
-                    bubbles.append(" ".join(header_lines))
-                    header_lines = []
-                bubbles.append(stripped)
-            else:
-                header_lines.append(stripped)
-        if header_lines:
-            bubbles.append(" ".join(header_lines))
-    return [b for b in bubbles if b]
+    """Split text into paragraph sections by double line breaks so list items stay together in one bubble."""
+    sections = [s.strip() for s in text.split("\n\n") if s.strip()]
+    return sections if sections else [text.strip()]
 
 
 def _build_response(text: str) -> dict:
@@ -478,13 +535,14 @@ _quiz_sessions: dict[str, dict] = {}
 _last_quiz: dict[str, dict] = {}
 
 
-def _get_random_question() -> dict:
-    """
-    Returns a random question from the MedQA-USMLE US_qbank.jsonl file.
-    """
+_QUESTIONS_CACHE: list[dict] | None = None
+
+def _get_all_questions() -> list[dict]:
+    global _QUESTIONS_CACHE
+    if _QUESTIONS_CACHE is not None:
+        return _QUESTIONS_CACHE
     import os
     import json
-    import random
     questions_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "data", "MedQA-USMLE", "questions", "US", "US_qbank.jsonl"
@@ -497,45 +555,78 @@ def _get_random_question() -> dict:
                 if line:
                     questions.append(json.loads(line))
     except Exception as e:
-        # Fallback to placeholder if file not found or error
-        return {
-            "question": "A patient presents to the clinic with typical acute symptoms. What is the most appropriate next step?",
-            "options": {
-                "A": "Prescribe antibiotics immediately",
-                "B": "Order an MRI",
-                "C": "Perform a physical examination",
-                "D": "Discharge with analgesics"
-            },
-            "answer": "C",
-            "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
-        }
-    if not questions:
-        return {
-            "question": "A patient presents to the clinic with typical acute symptoms. What is the most appropriate next step?",
-            "options": {
-                "A": "Prescribe antibiotics immediately",
-                "B": "Order an MRI",
-                "C": "Perform a physical examination",
-                "D": "Discharge with analgesics"
-            },
-            "answer": "C",
-            "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
-        }
-    return random.choice(questions)
+        logger.warning("Could not load MedQA jsonl: %s", e)
+    _QUESTIONS_CACHE = questions
+    return _QUESTIONS_CACHE
 
-def _start_quiz(session_id: str, specialty: str, show_intro: bool = True) -> JSONResponse:
-    q = _get_random_question()
-    opts = "\n\n\n".join([f"{k}) {v}" for k, v in q.get("options", {}).items()])
+
+def _get_random_question(specialty: str | None = None) -> dict:
+    """
+    Returns a random question from the MedQA-USMLE US_qbank.jsonl file, optionally filtered by specialty keywords.
+    """
+    all_q = _get_all_questions()
+    if not all_q:
+        return {
+            "question": "A patient presents to the clinic with typical acute symptoms. What is the most appropriate next step?",
+            "options": {
+                "A": "Prescribe antibiotics immediately",
+                "B": "Order an MRI",
+                "C": "Perform a physical examination",
+                "D": "Discharge with analgesics"
+            },
+            "answer": "C",
+            "explanation": "A physical examination is always the essential first step before ordering advanced imaging or prescribing medication."
+        }
+    if specialty:
+        spec_clean = specialty.lower()
+        keywords_map = {
+            "cardiology": ["cardiac", "heart", "coronary", "stemi", "chest pain", "murmur", "myocardial", "ecg"],
+            "surgery": ["surgery", "surgical", "laparotomy", "incision", "appendectomy", "resection"],
+            "pediatrics": ["child", "boy", "girl", "infant", "newborn", "pediatric", "year-old boy", "year-old girl"],
+            "neurology": ["stroke", "seizure", "headache", "neurological", "brain", "paralysis", "cranial"],
+            "emergency medicine": ["emergency", "trauma", "acute", "hypotension", "tachycardia", "resuscitation"],
+            "pulmonology": ["breath", "dyspnea", "pulmonary", "lung", "asthma", "copd", "pneumonia"],
+            "nephrology": ["kidney", "renal", "creatinine", "dialysis", "urinalysis", "urine"],
+            "gastroenterology": ["abdominal", "diarrhea", "vomiting", "liver", "jaundice", "bowel", "colon"],
+            "psychiatry": ["depression", "hallucination", "psychiatric", "mood", "schizophrenia", "anxiety"],
+            "obstetrics & gynaecology": ["pregnancy", "pregnant", "uterus", "vaginal", "ovarian", "trimester", "fetal"]
+        }
+        kw_list = keywords_map.get(spec_clean, [spec_clean])
+        matching = [
+            q for q in all_q
+            if any(kw in q.get("question", "").lower() for kw in kw_list)
+        ]
+        if matching:
+            return random.choice(matching)
+    return random.choice(all_q)
+
+
+def _build_response(text: str) -> dict:
+    """Build standardized response dict containing text and Dialogflow compatibility keys."""
+    return {
+        "text": text,
+        "answer": text,
+        "fulfillmentText": text,
+        "fulfillmentMessages": [{"text": {"text": [text]}}],
+    }
+
+
+def _start_quiz(session_id: str, specialty: str | None = None, show_intro: bool = True) -> JSONResponse:
+    q = _get_random_question(specialty=specialty)
+    # Double newlines between options so _format_bubbles splits A), B), C), D) into 4 separate speech bubbles!
+    opts = "\n\n".join([f"{k}) {v.strip()}" for k, v in q.get("options", {}).items()])
     letters = ", ".join(q.get("options", {}).keys())
-    if show_intro:
-        question_text = f"Quiz Time!\n\n{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
-    else:
-        question_text = f"{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
+    
+    intro_prefix = ""
+    if specialty:
+        intro_prefix = f"Here is a high-yield USMLE board question focusing on {specialty}:\n\n"
+    elif show_intro:
+        intro_prefix = "Quiz Time!\n\n"
+
+    question_text = f"{intro_prefix}{q.get('question','')}\n\n{opts}\n\nReply with {letters}."
+
     _quiz_sessions[session_id] = q
     _last_quiz[session_id] = q  # Save for explanation follow-up
-    if specialty:
-        combined = "I can't filter based on a specialty yet. Here's a random question:\n\n" + question_text
-        return JSONResponse(content=_build_response(combined))
     return JSONResponse(content=_build_response(question_text))
 
 
@@ -573,7 +664,7 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     # Vague or invalid response handling
     vague_phrases = ["YES", "NO", "SURE", "OK", "OKAY", "I DON'T KNOW", "IDK", "MAYBE", "NOT SURE", "?", "WHAT"]
     if not selected_letter or (user_input_clean in vague_phrases and selected_letter not in valid_letters):
-        opts = "\n\n".join([f"{k}) {v}" for k, v in options.items()])
+        opts = "\n\n".join([f"{k}) {v.strip()}" for k, v in options.items()])
         letters = ", ".join(valid_letters)
         text = (
             f"Please reply with one of the option letters: {letters}.\n\n"
@@ -606,8 +697,14 @@ def _handle_quiz_answer(session_id: str, user_input: str) -> JSONResponse:
     _sessions[session_id] = _sessions.get(session_id, {})
     _sessions[session_id]["quiz_followup"] = True
 
-    # Prompt for explanation follow-up and offer another quiz
-    followup = "\n\nReply 'explain' if you'd like an explanation.\nWant to try another one?"
+    # Prompt for explanation follow-up with natural phrasing
+    natural_followups = [
+        "\n\nLet me know if you'd like an explanation of the clinical reasoning, or say 'next' for another question!",
+        "\n\nFeel free to ask if you'd like me to break down why that's correct, or let me know if you want another board question!",
+        "\n\nLet me know if you'd like a breakdown of why that's the right choice, or say 'next' to keep going!",
+        "\n\nWant me to explain the diagnostic rationale? Just let me know, or say 'next' for the next case!"
+    ]
+    followup = random.choice(natural_followups)
     text = feedback + followup
     return JSONResponse(content=_build_response(text))
 
@@ -732,18 +829,20 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     # Greetings handler
     if query_clean in _GREETING_PHRASES or any(query_clean.startswith(g + " ") for g in _GREETING_PHRASES):
         return JSONResponse(content=_build_response(
-            "Hi there! I'm EMMA, your Emergency Medicine Mentoring Agent. 🩺 "
-            "Ask me about symptoms, diagnosis, treatment, or differentiation for emergency conditions "
-            "(e.g., Sepsis, Stroke, Heart Attack), or type **'quiz'** to test your knowledge!"
+            "Hi there! I am EMMA, your emergency medicine mentoring agent. "
+            "I'm here to help you master emergency medicine concepts, review clinical guidelines, "
+            "and practice USMLE-style diagnostic questions.\n\n"
+            "What medical topic or question would you like to explore today? "
+            "You can ask me any clinical question, or type quiz to test your knowledge!"
         ))
 
     # Thanks handler
     if query_clean in _THANKS_PHRASES:
         return JSONResponse(content=_build_response(
-            "You're welcome! 🩺 Let me know if you have any more medical questions or type **'quiz'** to practice another question."
+            "You're welcome! Let me know if you have any more medical questions or type quiz to practice another question."
         ))
 
-    is_vague = any(query_clean == p or query_clean.startswith(p) for p in _VAGUE_PHRASES) or len(query_clean.split()) <= 3
+    is_vague = any(query_clean == p or query_clean.startswith(p) for p in _VAGUE_PHRASES) or (bool(query_clean) and len(query_clean.split()) <= 3)
 
     if not cond_key:
         if is_vague and session and session.get("cond_key"):
@@ -752,11 +851,11 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             intent_key = session.get("intent_key", intent_key)
         elif is_vague and (query_clean in _AFFIRMATIVE_PHRASES or any(query_clean.startswith(a) for a in _AFFIRMATIVE_PHRASES)):
             return JSONResponse(content=_build_response(
-                "Awesome! Let me know what you'd like to review. 🩺 You can ask me a question like "
-                "**'What are the symptoms of sepsis?'** or **'How is a stroke diagnosed?'**, or type **'quiz'** to practice!"
+                "Awesome! Let me know what you'd like to review. You can ask me a question like "
+                "What are the symptoms of sepsis? or How is a stroke diagnosed?, or type quiz to practice!"
             ))
         elif not is_vague and raw_query and not RAG_ENABLED:
-            # They asked a full question about an unknown condition (e.g., fracture) while in static mode
+            # They asked a full question about an unknown condition while in static mode
             intent_key = "unsupported_condition"
 
     # Guess intent if Dialogflow sent a fallback
@@ -780,9 +879,9 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
     WELCOME_INTENTS  = set(_get_intents_cfg().get("welcome_intents", ["defaultwelcomeintent", "welcome"]))
 
     if intent_key == "unsupported_condition":
-        cond_list = " · ".join(m["name"] for m in _CONDITION_META().values())
-        answer = ("I can currently give detailed answers about these eight acute emergency "
-                  "conditions:\n\n" + cond_list + "\n\nAsk me about any of these!")
+        cond_list = ", ".join(m["name"] for m in _CONDITION_META().values())
+        answer = ("I am ready to answer your medical questions! For instant static review, "
+                  "I have detailed summaries for these acute conditions:\n\n" + cond_list + "\n\nFeel free to ask about any of these or type quiz to practice!")
         return JSONResponse(content=_build_response(answer))
 
     elif intent_key in HANDLED_INTENTS:
@@ -800,7 +899,7 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
             label = cond_display or "that"
             return JSONResponse(content=_build_response(
                 f"Looking up {label} in the medical textbooks… "
-                "Send me any message in a moment and I'll have your answer ready! 📚"
+                "Send me any message in a moment and I'll have your answer ready!"
             ))
         else:
             if cond_key is not None:
@@ -820,10 +919,10 @@ async def dialogflow_webhook(request: Request) -> JSONResponse:
 
     else:
         answer = (
-            "I want to make sure I give you the best medical answer! 🩺 "
+            "I want to make sure I give you the best medical answer! "
             "You can ask me about symptoms, diagnosis, treatment, risk factors, or clinical differentiation for: "
-            "**Sepsis, Heart Attack, Stroke, Anaphylaxis, Pulmonary Embolism, Meningitis, DKA, or Appendicitis**.\n\n"
-            "Try asking: *'What are the symptoms of sepsis?'* or type **'quiz'** to test your knowledge!"
+            "Sepsis, Heart Attack, Stroke, Anaphylaxis, Pulmonary Embolism, Meningitis, DKA, or Appendicitis.\n\n"
+            "Try asking: What are the symptoms of sepsis? or type quiz to test your knowledge!"
         )
         return JSONResponse(content=_build_response(answer))
 
@@ -849,6 +948,86 @@ async def direct_query(request: Request) -> JSONResponse:
     return JSONResponse(content={"answer": answer, "rag_used": RAG_ENABLED})
 
 
+def _handle_conversational_or_meta(message: str) -> str | None:
+    m = re.sub(r"[^\w\s]", "", message.lower()).strip()
+    
+    # 1. Age / Birthday
+    if any(p in m for p in ["how old are you", "what is your age", "your birthday", "when were you born"]):
+        return (
+            "I'm EMMA, your emergency medicine mentoring agent! As a virtual AI assistant, I don't have a human age or birthday, "
+            "but I am continuously loaded with up-to-date emergency medicine guidelines, USMLE medical textbooks, and clinical case questions.\n\n"
+            "What medical topic or condition would you like to review today?"
+        )
+    
+    # 2. Identity / Who are you
+    if any(p in m for p in ["who are you", "what is your name", "what are you", "tell me about yourself"]):
+        return (
+            "I am EMMA, your emergency medicine mentoring agent! I'm designed to help medical students, residents, and clinicians "
+            "review emergency medicine concepts, explore diagnostic criteria, and test clinical reasoning with MCQs.\n\n"
+            "You can ask me any medical question, or type quiz to practice clinical board questions!"
+        )
+
+    # 3. Capabilities / What can you do
+    if any(p in m for p in ["what can you do", "help me", "how do you work", "features", "what do you do"]):
+        return (
+            "Here is what I can help you with:\n\n"
+            "1. Clinical Q&A: Ask about symptoms, diagnostic algorithms, or management for any emergency condition (e.g. Sepsis, Stroke, Heart Attack, Anaphylaxis, Trauma).\n"
+            "2. Clinical Practice MCQs: Type quiz to take USMLE-style emergency medicine questions and get explanations.\n"
+            "3. Differential Diagnosis: Ask how to differentiate overlapping conditions (e.g. DKA vs HHS, STEMI vs Pericarditis).\n\n"
+            "What would you like to start with?"
+        )
+
+    # 4. Greetings — varied, natural, redirect to clinical topics
+    _GREETINGS_EXACT = {
+        "hi", "hello", "hey", "hi there", "hello there", "good morning", "good afternoon",
+        "good evening", "sup", "whats up", "whatsup", "howdy", "yo", "greetings",
+        "how are you", "hows it going", "hows it going", "how r u", "hey there"
+    }
+    if m in _GREETINGS_EXACT or any(m.startswith(g + " ") for g in ["hi", "hello", "hey", "sup", "yo", "howdy"]):
+        return random.choice([
+            "Hey! Good to see you. What's on your mind — got a clinical question or want to run through a quick quiz?",
+            "Hi there! I'm here and ready. Ask me anything emergency medicine — symptoms, diagnosis, management, whatever you need.",
+            "Hey! What can I help you with today? You can ask me about any emergency condition, or type quiz if you want to test yourself.",
+            "Hello! What would you like to explore today? I cover everything from sepsis management to stroke diagnosis.",
+            "Hi! Good timing. Ask me any clinical question or say quiz and I'll throw a board-style question at you.",
+            "Hey, what's up! I'm EMMA — ask me about any emergency medicine topic and I'll walk you through it.",
+        ])
+
+    # 5. Off-topic redirection (weather, sports, coding, movies, etc.)
+    _OFF_TOPIC_KEYWORDS = ["weather", "sports", "football", "basketball", "movie", "film", "song", "recipe", "python code", "stock market"]
+    if any(k in m for k in _OFF_TOPIC_KEYWORDS):
+        return (
+            "As EMMA, your emergency medicine mentoring agent, I specialize strictly in clinical medical topics, emergency protocols, "
+            "and diagnostic board prep! I can't help with off-topic subjects like that, but I'm ready for any medical question or quiz you'd like to try."
+        )
+
+    return None
+
+
+def _is_quiz_request(message: str) -> bool:
+    """Determine if a user message is explicitly asking to start an interactive quiz/MCQ."""
+    msg_clean = re.sub(r"[^\w\s]", "", message.lower()).strip()
+    
+    # Standalone exact triggers
+    if msg_clean in {"quiz", "start quiz", "quiz me", "practice", "mcq", "test me", "start", "another quiz", "next quiz"}:
+        return True
+
+    # Exclude questions asking ABOUT a quiz or previous quiz
+    meta_patterns = [
+        r"previous quiz", r"last quiz", r"this quiz", r"the quiz", r"about the quiz",
+        r"what (was|is) the (answer|explanation)", r"how do quiz", r"why (was|is) the quiz"
+    ]
+    if any(re.search(p, message.lower()) for p in meta_patterns):
+        return False
+
+    # Action phrases requesting a new quiz
+    request_patterns = [
+        r"\b(quiz\s+me|start\s+a?\s*quiz|give\s+me\s+a?\s*(quiz|mcq|question)|test\s+me|take\s+a?\s*quiz|do\s+a?\s*quiz|try\s+a?\s*quiz|want\s+a?\s*quiz|ready\s+for\s+a?\s*quiz)\b",
+        r"\b(board\s+question|practice\s+question|mcq\s+question)\b"
+    ]
+    return any(bool(re.search(p, message.lower())) for p in request_patterns)
+
+
 # ── Chat & Webhook endpoints ──────────────────────────────────────────────────
 
 @app.post("/chat")
@@ -860,6 +1039,8 @@ async def chat(request: Request) -> JSONResponse:
     try:
         body       = await request.json()
         message    = body.get("message", "").strip()
+        if not message and "messages" in body and isinstance(body["messages"], list) and body["messages"]:
+            message = body["messages"][-1].get("text", "").strip()
         session_id = body.get("session_id", "chat-default")
         think      = bool(body.get("think", False))
     except Exception:
@@ -867,37 +1048,64 @@ async def chat(request: Request) -> JSONResponse:
     if not message:
         raise HTTPException(status_code=422, detail="'message' field is required")
 
+    # 1. Handle Quiz Command
+    if _is_quiz_request(message):
+        return _start_quiz(session_id, None, show_intro=True)
+
+    # 2. Check active Quiz Session answer
+    if session_id in _quiz_sessions:
+        return _handle_quiz_answer(session_id, message)
+
+    # 3. When RAG / Cloud LLM is enabled, let the LLM handle all conversational, meta, and medical queries naturally!
+    if RAG_ENABLED:
+        logger.info("Chat | RAG Direct Inference | think=%s | query=%r", think, message[:80])
+        session = _session_get(session_id)
+        history = session.get("history", [])
+
+        answer = await _rag_response("direct", message, think=think, history=history)
+
+        new_history = list(history)
+        new_history.append({"role": "user", "content": message})
+        new_history.append({"role": "assistant", "content": answer})
+        _session_set(session_id, "rag", None, None, message, history=new_history[-20:])
+
+        return JSONResponse(content={
+            "text": answer, "answer": answer, "intent": "rag", "condition": None
+        })
+
+    # 4. Static offline fallback when RAG is disabled
+    session = _session_get(session_id)
+    history = session.get("history", [])
+
+    conv_response = _handle_conversational_or_meta(message)
+    if conv_response:
+        new_history = list(history)
+        new_history.append({"role": "user", "content": message})
+        new_history.append({"role": "assistant", "content": conv_response})
+        _session_set(session_id, "conversational", None, None, message, history=new_history[-20:])
+        return JSONResponse(content={
+            "text": conv_response, "answer": conv_response, "intent": "conversational", "condition": None
+        })
+
     intent_key   = _detect_intent_from_text(message)
     cond_key     = _extract_condition_from_text(message)
     cond_display = _CONDITION_META().get(cond_key, {}).get("name") if cond_key else None
 
-    session = _session_get(session_id)
-    if cond_key is None and session:
-        cond_key     = session.get("cond_key")
-        cond_display = session.get("cond_display")
-    if intent_key == "general" and session.get("intent_key"):
-        intent_key = session.get("intent_key")
-
-    logger.info("Chat | intent=%s | cond=%s | rag=%s | think=%s | query=%r",
-                intent_key, cond_key, RAG_ENABLED, think, message[:80])
-
-    if RAG_ENABLED:
-        rag_query = _build_rag_query(intent_key, cond_display, message)
-        answer    = await _rag_response(intent_key, rag_query, cond_key=cond_key, think=think)
-    elif cond_key:
+    if cond_key:
         answer = _static_response(intent_key, cond_key)
     else:
-        cond_list = " · ".join(m["name"] for m in _CONDITION_META().values())
         answer = (
-            "I can answer questions about eight acute emergency conditions: "
-            + cond_list
-            + ". Try asking about symptoms, diagnosis, treatment, risk factors, "
-            "urgency, or differentiation."
+            "I'm here to help you explore emergency medicine topics! You can ask me any clinical question "
+            "(e.g., symptoms, diagnosis, or management for Sepsis, Stroke, Heart Attack, PE, or DKA), "
+            "or type quiz to practice clinical board questions!"
         )
 
-    _session_set(session_id, intent_key, cond_key, cond_display, message)
+    new_history = list(history)
+    new_history.append({"role": "user", "content": message})
+    new_history.append({"role": "assistant", "content": answer})
+    _session_set(session_id, intent_key, cond_key, cond_display, message, history=new_history[-20:])
     return JSONResponse(content={
-        "answer": answer, "intent": intent_key, "condition": cond_display
+        "text": answer, "answer": answer, "intent": intent_key, "condition": cond_display
     })
 
 

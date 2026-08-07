@@ -97,6 +97,19 @@ async function loadReadme() {
         loadingEl.style.display = 'none';
         contentEl.innerHTML = html;
 
+        // Render KaTeX LaTeX math expressions ($\kappa$, etc.)
+        if (window.renderMathInElement) {
+            window.renderMathInElement(contentEl, {
+                delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                ],
+                throwOnError: false
+            });
+        }
+
         // Wrap tables in scroll + fade containers
         contentEl.querySelectorAll('table').forEach(table => {
             if (!table.parentElement.classList.contains('table-scroll')) {
@@ -246,22 +259,289 @@ overlay.addEventListener('click', closeDrawer);
 // ── Specialties grid population ───────────────────────────────────────────
 window.renderSpecialtiesGrid = function () {
     const specialties = [
-        "Anaesthesia", "Anatomy", "Biochemistry", "Dental", "Dermatology", "ENT", "Internal Medicine", "Microbiology", "Obstetrics & Gynaecology", "Ophthalmology", "Orthopaedics", "Pathology", "Pediatrics", "Pharmacology", "Physiology", "Psychiatry", "Public Health", "Radiology", "Surgery", "Emergency Medicine"
-    ];
+        "Anaesthesia",
+        "Anatomy",
+        "Biochemistry",
+        "Dental",
+        "Dermatology",
+        "Emergency Medicine",
+        "ENT",
+        "Internal Medicine",
+        "Microbiology",
+        "Obstetrics & Gynaecology",
+        "Ophthalmology",
+        "Orthopaedics",
+        "Pathology",
+        "Pediatrics",
+        "Pharmacology",
+        "Physiology",
+        "Psychiatry",
+        "Public Health",
+        "Radiology",
+        "Surgery"
+    ].sort((a, b) => a.localeCompare(b));
     const grid = document.getElementById('specialties-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    specialties.forEach(name => {
-        const card = document.createElement('div');
-        card.className = 'card';
-        const div = document.createElement('div');
-        div.className = 'card-name';
-        div.textContent = name;
-        card.appendChild(div);
-        grid.appendChild(card);
+    specialties.forEach((name, idx) => {
+        const pill = document.createElement('span');
+        pill.className = 'specialty-pill';
+        pill.textContent = name;
+        pill.style.animationDelay = `${idx * 55}ms`;
+        grid.appendChild(pill);
     });
 };
 
 window.addEventListener('DOMContentLoaded', function () {
     window.renderSpecialtiesGrid();
+
+    // ── Native Floating Chat Drawer & Teaser Controller ─────────────────────
+    const fab = document.getElementById('emma-fab');
+    const drawer = document.getElementById('emma-drawer');
+    const closeBtn = document.getElementById('emma-drawer-close');
+    const teaser = document.getElementById('emma-teaser');
+    const teaserClose = document.getElementById('emma-teaser-close');
+    const form = document.getElementById('emma-input-form');
+    const input = document.getElementById('emma-input-field');
+    const messages = document.getElementById('emma-messages');
+
+    function openDrawer() {
+        if (drawer) drawer.classList.remove('emma-hidden');
+        if (teaser) teaser.classList.add('emma-hidden');
+    }
+
+    function toggleDrawer() {
+        if (!drawer) return;
+        const isHidden = drawer.classList.contains('emma-hidden');
+        if (isHidden) {
+            openDrawer();
+        } else {
+            drawer.classList.add('emma-hidden');
+        }
+    }
+
+    if (fab) fab.addEventListener('click', toggleDrawer);
+    if (teaser) teaser.addEventListener('click', openDrawer);
+    if (teaserClose) {
+        teaserClose.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (teaser) teaser.classList.add('emma-hidden');
+        });
+    }
+    if (closeBtn && drawer) {
+        closeBtn.addEventListener('click', () => drawer.classList.add('emma-hidden'));
+    }
+
+    // Show teaser after 2s delay on first page load
+    if (teaser) {
+        setTimeout(() => {
+            teaser.classList.remove('emma-hidden');
+        }, 2000);
+    }
+
+    // ── Save Dropdown Menu ─────────────────────────────────────────────
+    const saveBtn = document.getElementById('emma-save-btn');
+    const saveMenu = document.getElementById('emma-save-menu');
+    const actionCopy = document.getElementById('emma-action-copy');
+    const actionDownload = document.getElementById('emma-action-download');
+
+    if (saveBtn && saveMenu) {
+        saveBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            saveMenu.classList.toggle('emma-hidden');
+        });
+
+        document.addEventListener('click', () => {
+            saveMenu.classList.add('emma-hidden');
+        });
+    }
+
+    function getTranscriptText() {
+        if (!messages) return '';
+        const msgDivs = messages.querySelectorAll('.emma-msg');
+        let text = 'EMMA Emergency Medicine Mentoring Agent — Conversation Transcript\n';
+        text += 'Date: ' + new Date().toLocaleString() + '\n';
+        text += '='.repeat(60) + '\n\n';
+
+        msgDivs.forEach(div => {
+            if (div.classList.contains('emma-msg-typing')) return;
+            const isUser = div.classList.contains('emma-msg-user');
+            const sender = isUser ? 'User' : 'EMMA';
+            const content = div.innerText || div.textContent || '';
+            text += `[${sender}]:\n${content.trim()}\n\n`;
+        });
+        return text;
+    }
+
+    if (actionCopy) {
+        actionCopy.addEventListener('click', async () => {
+            const transcript = getTranscriptText();
+            try {
+                await navigator.clipboard.writeText(transcript);
+                actionCopy.innerText = '✓ Copied!';
+                setTimeout(() => {
+                    actionCopy.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy to Clipboard';
+                }, 2000);
+            } catch (err) {
+                console.error('Copy failed:', err);
+            }
+        });
+    }
+
+    if (actionDownload) {
+        actionDownload.addEventListener('click', () => {
+            const transcript = getTranscriptText();
+            const blob = new Blob([transcript], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const now = new Date();
+            const timestamp = now.getFullYear().toString() +
+                String(now.getMonth() + 1).padStart(2, '0') +
+                String(now.getDate()).padStart(2, '0') + '-' +
+                String(now.getHours()).padStart(2, '0') +
+                String(now.getMinutes()).padStart(2, '0') +
+                String(now.getSeconds()).padStart(2, '0');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `emma-transcript-${timestamp}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    // ── Fullscreen Toggle ──────────────────────────────────────────────
+    const fullscreenBtn = document.getElementById('emma-fullscreen-btn');
+    const fullscreenIcon = document.getElementById('emma-fullscreen-icon');
+
+    if (fullscreenBtn && drawer && fullscreenIcon) {
+        fullscreenBtn.addEventListener('click', () => {
+            const isFull = drawer.classList.toggle('emma-fullscreen');
+            if (isFull) {
+                fullscreenBtn.title = 'Exit Fullscreen';
+                fullscreenIcon.innerHTML = '<polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line>';
+            } else {
+                fullscreenBtn.title = 'Toggle Fullscreen';
+                fullscreenIcon.innerHTML = '<polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line>';
+            }
+        });
+    }
+
+    let isFirstMessageSent = false;
+
+    if (form && input && messages) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text) return;
+
+            // Append User Message
+            const userDiv = document.createElement('div');
+            userDiv.className = 'emma-msg emma-msg-user';
+            userDiv.textContent = text;
+            messages.appendChild(userDiv);
+            input.value = '';
+            messages.scrollTop = messages.scrollHeight;
+
+            // Append Typing Indicator
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'emma-msg emma-msg-typing';
+            typingDiv.textContent = 'EMMA is thinking...';
+            messages.appendChild(typingDiv);
+            messages.scrollTop = messages.scrollHeight;
+
+            let wakeupTimer = null;
+            if (!isFirstMessageSent) {
+                isFirstMessageSent = true;
+                wakeupTimer = setTimeout(() => {
+                    if (messages.contains(typingDiv)) {
+                        typingDiv.textContent = 'EMMA is waking up. This might take up to a minute...';
+                    }
+                }, 3500);
+            }
+
+            // Fetch from /chat API with automatic fallback
+            try {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                let apiUrl = isLocal ? 'http://localhost:8080/chat' : 'https://emma-webhook.onrender.com/chat';
+
+                let sid = window.sessionStorage.getItem('emma_sid');
+                if (!sid) {
+                    sid = 'emma-session-' + Math.random().toString(36).substring(2, 9);
+                    window.sessionStorage.setItem('emma_sid', sid);
+                }
+
+                let res;
+                try {
+                    res = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: text, session_id: sid })
+                    });
+                } catch (localErr) {
+                    // Fallback to live Render endpoint if local port 8080 is down
+                    if (isLocal) {
+                        res = await fetch('https://emma-webhook.onrender.com/chat', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: text, session_id: sid })
+                        });
+                    } else {
+                        throw localErr;
+                    }
+                }
+                const data = await res.json();
+
+                if (wakeupTimer) clearTimeout(wakeupTimer);
+
+                // Remove typing indicator
+                if (messages.contains(typingDiv)) {
+                    messages.removeChild(typingDiv);
+                }
+
+                // Append AI Response (split into individual speech bubbles per paragraph)
+                const answerText = data.answer || data.text || "Sorry, I didn't receive a valid response.";
+                const paragraphs = answerText.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+                if (paragraphs.length === 0) {
+                    paragraphs.push(answerText);
+                }
+
+                paragraphs.forEach((para, idx) => {
+                    setTimeout(() => {
+                        const aiDiv = document.createElement('div');
+                        aiDiv.className = 'emma-msg emma-msg-ai emma-pop-in';
+                        const normalizedPara = para.replace(/^[•·]\s*/gm, '- ');
+                        if (window.marked) {
+                            aiDiv.innerHTML = window.marked.parse(normalizedPara);
+                        } else {
+                            aiDiv.textContent = para;
+                        }
+                        if (window.renderMathInElement) {
+                            window.renderMathInElement(aiDiv, {
+                                delimiters: [
+                                    { left: '$$', right: '$$', display: true },
+                                    { left: '$', right: '$', display: false },
+                                    { left: '\\(', right: '\\)', display: false },
+                                    { left: '\\[', right: '\\]', display: true }
+                                ],
+                                throwOnError: false
+                            });
+                        }
+                        messages.appendChild(aiDiv);
+                        messages.scrollTop = messages.scrollHeight;
+                    }, idx * 280);
+                });
+            } catch (err) {
+                if (wakeupTimer) clearTimeout(wakeupTimer);
+                if (messages.contains(typingDiv)) {
+                    messages.removeChild(typingDiv);
+                }
+                const errDiv = document.createElement('div');
+                errDiv.className = 'emma-msg emma-msg-ai';
+                errDiv.textContent = 'Connection error. Please ensure the backend server is running.';
+                messages.appendChild(errDiv);
+                messages.scrollTop = messages.scrollHeight;
+            }
+        });
+    }
 });

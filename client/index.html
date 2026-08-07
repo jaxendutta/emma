@@ -13,8 +13,9 @@
   <link rel="stylesheet" href="styles/style.css" />
   <link rel="stylesheet" href="styles/nav.css" />
   <link rel="stylesheet" href="styles/graph.css" />
-  <link rel="icon" type="image/x-icon" href="assets/logo.jpg">
-  <script src="https://www.gstatic.com/dialogflow-console/fast/messenger/bootstrap.js?v=1"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
 </head>
 
 <body>
@@ -50,23 +51,18 @@
   <div id="tab-home" class="panel active">
 
     <div class="hero">
-      <div class="eyebrow">Emergency Medicine &ndash; Mentoring Agent</div>
+      <div class="eyebrow">Emergency Medicine Mentoring Agent</div>
       <h1>Learn about <em>acute</em><br>emergency conditions<br>with <em>Emma</em>.</h1>
-      <p class="hero-sub">
-        A knowledge-based conversational agent for medical exam preparation,
-        covering 8 acute conditions with symptoms, diagnostics, treatments,
-        risk factors, and clinical differentiations.
-      </p>
-      <div class="cta-hint">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path
-            d="M2 10.5C2 11.88 3.12 13 4.5 13H11.5C12.88 13 14 11.88 14 10.5V6.5C14 5.12 12.88 4 11.5 4H4.5C3.12 4 2 5.12 2 6.5V10.5Z"
-            stroke="#2d6a4f" stroke-width="1.3" />
-          <circle cx="5.5" cy="8.5" r="0.8" fill="#2d6a4f" />
-          <circle cx="8" cy="8.5" r="0.8" fill="#2d6a4f" />
-          <circle cx="10.5" cy="8.5" r="0.8" fill="#2d6a4f" />
-        </svg>
-        Open the chat in the bottom-right corner to get started
+      <div class="hero-row">
+        <p class="hero-sub">
+          A knowledge-based conversational agent for medical exam preparation,
+          covering 8 acute conditions with symptoms, diagnostics, treatments,
+          risk factors, and clinical differentiations.
+        </p>
+        <button class="cta-hint" id="cta-open-chat" onclick="document.getElementById('emma-fab').click()"
+          title="Ask EMMA Something">
+          Ask EMMA Something
+        </button>
       </div>
     </div>
 
@@ -128,8 +124,101 @@
     </div>
   </div>
 
-  <df-messenger intent="WELCOME" chat-title="EMMA" agent-id="449acc2d-a63d-4773-b4da-090d71bc0b52" language-code="en">
-  </df-messenger>
+  <!-- FLOATING CHAT FAB, TEASER & DRAWER -->
+  <div id="emma-teaser" class="emma-teaser emma-hidden">
+    <span>Hi there! Need help or want to try a quiz? Ask EMMA! 👋</span>
+    <button id="emma-teaser-close" class="emma-teaser-close" aria-label="Dismiss Teaser">&times;</button>
+  </div>
+
+  <button id="emma-fab" class="emma-fab" title="Chat with EMMA" aria-label="Open Chat">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+    </svg>
+  </button>
+
+  <div id="emma-drawer" class="emma-drawer emma-hidden">
+    <div class="emma-drawer-header">
+      <div class="emma-drawer-title">
+        <div class="emma-title-text">Ask EMMA</div>
+      </div>
+      <div class="emma-header-actions">
+        <!-- Save / Export Dropdown -->
+        <div class="emma-dropdown">
+          <button id="emma-save-btn" class="emma-icon-btn" title="Save / Export Conversation"
+            aria-label="Save Conversation">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+          </button>
+          <div id="emma-save-menu" class="emma-dropdown-menu emma-hidden">
+            <button id="emma-action-copy" class="emma-dropdown-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copy to Clipboard
+            </button>
+            <button id="emma-action-download" class="emma-dropdown-item">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              Save as Transcript (.txt)
+            </button>
+          </div>
+        </div>
+
+        <!-- Fullscreen Toggle Button -->
+        <button id="emma-fullscreen-btn" class="emma-icon-btn" title="Toggle Fullscreen" aria-label="Toggle Fullscreen">
+          <svg id="emma-fullscreen-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+        </button>
+
+        <!-- Close Button -->
+        <button id="emma-drawer-close" class="emma-icon-btn emma-close-btn" title="Close Chat" aria-label="Close Chat">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="emma-messages" class="emma-messages">
+      <div class="emma-disclaimer-banner">
+        First response may take up to 50s if the backend is waking up after a period of inactivity.
+        Subsequent responses are much faster.
+      </div>
+      <div class="emma-msg emma-msg-ai">
+        Hi there! I am EMMA, your emergency medicine mentoring agent. Ask me about emergency conditions (e.g. Sepsis,
+        Stroke, Heart Attack) or type quiz to practice!
+      </div>
+    </div>
+
+    <form id="emma-input-form" class="emma-input-form">
+      <input type="text" id="emma-input-field" placeholder="Ask a question or start a quiz..." autocomplete="off" />
+      <button type="submit" class="emma-send-btn" aria-label="Send">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </form>
+  </div>
 
   <!-- ONTOLOGY GRAPH TAB -->
   <div id="tab-graph" class="panel">

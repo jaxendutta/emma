@@ -29,6 +29,16 @@ def test_health():
     assert "rag_enabled" in data
 
 
+def test_head_root():
+    r = client.head("/")
+    assert r.status_code == 200
+
+
+def test_head_health():
+    r = client.head("/health")
+    assert r.status_code == 200
+
+
 # ── Conditions ────────────────────────────────────────────────────────────────
 
 def test_conditions_list():
@@ -43,8 +53,11 @@ def test_conditions_list():
 
 # ── Webhook — welcome ─────────────────────────────────────────────────────────
 
+import time as _test_time
+
 def _webhook(intent: str, condition: str = "", query_text: str = ""):
     return client.post("/webhook", json={
+        "session": f"test-session-{_test_time.time_ns()}",
         "queryResult": {
             "intent":     {"displayName": intent},
             "parameters": {"condition": condition},
@@ -126,6 +139,31 @@ def test_direct_query_missing_field():
 def test_direct_query_invalid_json():
     r = client.post("/query", content=b"not json", headers={"Content-Type": "application/json"})
     assert r.status_code == 400
+
+
+# ── Chat history ─────────────────────────────────────────────────────────────
+
+def test_chat_conversation_history():
+    sid = "test-history-session-123"
+    r1 = client.post("/chat", json={"message": "What are the symptoms of stroke?", "session_id": sid})
+    assert r1.status_code == 200
+    r2 = client.post("/chat", json={"message": "how do you treat it?", "session_id": sid})
+    assert r2.status_code == 200
+    from src.api import _sessions
+    session = _sessions.get(sid)
+    assert session is not None
+    assert "history" in session
+    assert len(session["history"]) == 4  # 2 user turns + 2 assistant turns
+
+
+def test_is_quiz_request():
+    from src.api import _is_quiz_request
+    assert _is_quiz_request("quiz") is True
+    assert _is_quiz_request("quiz me") is True
+    assert _is_quiz_request("okay quiz me now") is True
+    assert _is_quiz_request("can you give me a board question?") is True
+    assert _is_quiz_request("how do quizzes help in learning?") is False
+    assert _is_quiz_request("what was the answer to the previous quiz question?") is False
 
 
 # ── Normalisation edge cases ──────────────────────────────────────────────────
